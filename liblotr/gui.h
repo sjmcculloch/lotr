@@ -43,6 +43,7 @@
 #define DIALOG_PARAGRAPH     7
 #define DIALOG_SPOT_PRINT    8
 #define DIALOG_DIED          9
+#define DIALOG_SETTINGS     10
 
 
 #define MAIN_MENU              100

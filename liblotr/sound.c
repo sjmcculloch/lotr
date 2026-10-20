@@ -50,6 +50,13 @@ int sound_sizes[SOUNDS_NUM];
 
 #define MUSIC_MAIN_INDEX 8
 
+/* settings menu state, stored in settings.txt */
+static int effects_volume = 100;
+#ifndef CD_VERSION
+static int midi_music_on = 1;
+static int midi_music_volume = 100;
+#endif
+
 
 /*
   sound initializations
@@ -124,6 +131,19 @@ sound_init(void)
 
 #endif
 
+    {
+        char v[16];
+        if (lotr_setting_get("effects_volume", v, sizeof(v)))
+            effects_volume = atoi(v);
+        effects_set_volume(effects_volume);
+#ifndef CD_VERSION
+        if (lotr_setting_get("music", v, sizeof(v)))
+            midi_music_on = SDL_strcasecmp(v, "off") != 0;
+        if (lotr_setting_get("music_volume", v, sizeof(v)))
+            midi_music_volume = atoi(v);
+        lotr_set_music_volume(midi_music_volume);
+#endif
+    }
 }
 
 
@@ -181,7 +201,8 @@ play_music(void)
 #ifdef CD_VERSION
     cdmusic_start();
 #else
-    play_midi(music_data, music_size, TRUE);
+    if (midi_music_on)
+        play_midi(music_data, music_size, TRUE);
 #endif
 }
 
@@ -193,12 +214,113 @@ play_music(void)
 void
 toggle_music(void)
 {
+    music_set_on(!music_is_on());
+}
+
+
+
+/*
+  settings menu: music on/off and volumes, all remembered in settings.txt
+*/
+
+int
+music_available(void)
+{
 #ifdef CD_VERSION
-    cdmusic_toggle();
+    return cdmusic_available();
 #else
-    if (!stop_midi())
+    return 1;
+#endif
+}
+
+
+int
+music_is_on(void)
+{
+#ifdef CD_VERSION
+    return cdmusic_enabled();
+#else
+    return midi_music_on;
+#endif
+}
+
+
+void
+music_set_on(int on)
+{
+#ifdef CD_VERSION
+    cdmusic_set_enabled(on);
+#else
+    midi_music_on = on;
+    stop_midi();
+    if (on)
         play_music();
 #endif
+    lotr_setting_set("music", on ? "on" : "off");
+}
+
+
+int
+music_get_volume(void)
+{
+#ifdef CD_VERSION
+    return cdmusic_volume();
+#else
+    return midi_music_volume;
+#endif
+}
+
+
+void
+music_set_volume(int percent)
+{
+    char v[16];
+
+    percent = percent < 0 ? 0 : percent > 100 ? 100 : percent;
+#ifdef CD_VERSION
+    cdmusic_set_volume(percent);
+#else
+    midi_music_volume = percent;
+    lotr_set_music_volume(percent);
+#endif
+    snprintf(v, sizeof(v), "%d", percent);
+    lotr_setting_set("music_volume", v);
+}
+
+
+int
+effects_get_volume(void)
+{
+    return effects_volume;
+}
+
+
+/* applies the volume; effects_store_volume() also remembers it */
+void
+effects_set_volume(int percent)
+{
+    effects_volume = percent < 0 ? 0 : percent > 100 ? 100 : percent;
+    lotr_set_effects_volume(effects_volume);
+}
+
+
+void
+effects_store_volume(int percent)
+{
+    char v[16];
+
+    effects_set_volume(percent);
+    snprintf(v, sizeof(v), "%d", effects_volume);
+    lotr_setting_set("effects_volume", v);
+}
+
+
+/* a short sound effect, so the effects volume can be heard */
+void
+effects_preview(void)
+{
+    if (sound_sizes[0] > 0)
+        play_sample(sound_data[0], sound_sizes[0]);
 }
 
 

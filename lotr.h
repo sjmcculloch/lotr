@@ -60,12 +60,9 @@
 /* uncomment for fullscreen */
 /* #define FULLSCREEN */
 
-/* Scaling factor for the screen */
-#ifdef HAVE_LIBHQX
-# define SCREEN_FACT 4
-#else
-# define SCREEN_FACT 1
-#endif
+/* Scaling factor for the screen; scaling and filters (sharp, hqx, CRT)
+   are applied when the frame is presented, see lotr_sdl2.c */
+#define SCREEN_FACT 1
 
 /* not much tested with other dimensions */
 /* larger resolution is considered cheating */

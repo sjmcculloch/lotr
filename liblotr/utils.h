@@ -55,6 +55,12 @@ extern char *lotr_homedir_filename(const char *name);
 /* atomically replaces path with tmp, optionally keeping <path>.bak */
 extern int lotr_replace_file(const char *tmp, const char *path, int backup);
 
+/* read a setting from settings.txt, return 1 if it is set */
+extern int lotr_setting_get(const char *key, char *value, int size);
+
+/* store a setting in settings.txt, return 1 on success */
+extern int lotr_setting_set(const char *key, const char *value);
+
 /* adds suffix to a filename */
 extern char *lotr_add_suffix(const char *name, const char *suffix);
 

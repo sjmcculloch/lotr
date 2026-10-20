@@ -1,6 +1,6 @@
 noinst_LTLIBRARIES = liblotr.la
-liblotr_la_CPPFLAGS = -DPREFIX='"@prefix@"' $(HQX_CFLAGS) $(SDL_CFLAGS) $(XML2_CFLAGS)
-liblotr_la_LIBADD = $(HQX_LIBS) $(SDL_LIBS) $(XML2_LIBS)
+liblotr_la_CPPFLAGS = -DPREFIX='"@prefix@"' $(SDL_CFLAGS) $(XML2_CFLAGS)
+liblotr_la_LIBADD = $(SDL_LIBS) $(XML2_LIBS)
 liblotr_la_SOURCES = \
 	archive.c \
 	archive.h \
@@ -27,6 +27,9 @@ liblotr_la_SOURCES = \
 	graphics.h \
 	gui.c \
 	gui.h \
+	hq4x.c \
+	hqx.h \
+	hqx_common.h \
 	init.c \
 	init.h \
 	lotr_sdl2.c \

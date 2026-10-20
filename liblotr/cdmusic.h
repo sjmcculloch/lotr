@@ -16,6 +16,11 @@
 extern void cdmusic_start(void);    /* start/continue background music */
 extern int cdmusic_stop(void);      /* stop; nonzero if it was playing */
 extern int cdmusic_toggle(void);    /* options menu on/off */
+extern int cdmusic_available(void); /* mixer open and track files found */
+extern int cdmusic_enabled(void);   /* not switched off by the player */
+extern void cdmusic_set_enabled(int on);
+extern int cdmusic_volume(void);    /* 0-100 */
+extern void cdmusic_set_volume(int percent);
 extern void cdmusic_pause(void);    /* around movies */
 extern void cdmusic_resume(void);
 extern void cdmusic_cue(int index); /* script music cue 0..11 */
