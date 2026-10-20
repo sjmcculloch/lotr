@@ -33,6 +33,7 @@
 #include "character.h"
 #include "game.h"
 #include "gui.h"
+#include "journal.h"
 #include "lotr_sdl.h"
 #include "map.h"
 #include "object.h"
@@ -2133,6 +2134,7 @@ spot_continue(CommandSpot *spot)
                 break;
 
             case COMMAND_TEXT:
+                journal_add_text(game_get_text(spot->data[i + 1]));
                 gui_message(game_get_text(spot->data[i + 1]), 0);
                 spot->pos++;
                 return 1;
@@ -2143,11 +2145,13 @@ spot_continue(CommandSpot *spot)
                 return 1;
 
             case COMMAND_TEXT_PAR:
+                journal_add_paragraph(spot->data[i + 1]);
                 gui_paragraph(spot->data[i + 1]);
                 spot->pos++;
                 return 1;
 
             case COMMAND_QUESTION_PAR:
+                journal_add_paragraph(spot->data[i + 1]);
                 gui_paragraph_question(spot->data[i + 1]);
                 spot->pos++;
                 return 1;

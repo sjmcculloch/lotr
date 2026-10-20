@@ -33,6 +33,7 @@
 #include "combat.h"
 #include "gui.h"
 #include "graphics.h"
+#include "journal.h"
 #include "lotr_sdl.h"
 #include "map.h"
 #include "object.h"
@@ -1507,6 +1508,269 @@ dialog_settings_key(int key)
 
 
 /*
+  journal (J): every entry laid out as lines of a full screen scroll,
+  newest at the bottom; Up/Down, PgUp/PgDn, Home/End scroll
+*/
+
+#define JOURNAL_WIDTH 36
+#define JOURNAL_ROWS  21        /* text rows; then a gap and the key help */
+
+static char **journal_lines = NULL;
+static int journal_lines_num = 0;
+static int journal_lines_max = 0;
+static int journal_top = 0;
+
+
+static void
+journal_add_line(const char *line, int len)
+{
+    char *copy;
+
+    if (journal_lines_num == journal_lines_max) {
+        journal_lines_max = journal_lines_max ? 2 * journal_lines_max : 512;
+        journal_lines = realloc(journal_lines,
+                                journal_lines_max * sizeof(char *));
+        if (journal_lines == NULL) {
+            fprintf(stderr, "lotr: out of memory for the journal\n");
+            exit(1);
+        }
+    }
+    copy = lotr_malloc(len + 1);
+    memcpy(copy, line, len);
+    copy[len] = 0;
+    journal_lines[journal_lines_num++] = copy;
+}
+
+
+/* word wrap text to the journal width; '\n' starts a new line */
+static void
+journal_wrap(const char *text, int indent)
+{
+    char line[JOURNAL_WIDTH + 1];
+    int width = JOURNAL_WIDTH - indent;
+    int len, n;
+
+    while (*text) {
+        if (*text == '\n') {
+            ++text;
+            continue;
+        }
+
+        /* longest run of words that fits, stopping at a line break */
+        len = 0;
+        n = 0;
+        while (text[n] && text[n] != '\n' && n <= width) {
+            if (text[n] == ' ')
+                len = n;
+            ++n;
+        }
+        if (!text[n] || text[n] == '\n' || n <= width)
+            len = n;            /* the rest fits */
+        else if (len == 0)
+            len = width;        /* one very long word */
+        while (len > 1 && text[len - 1] == ' ')
+            --len;
+
+        memset(line, ' ', indent);
+        memcpy(line + indent, text, len);
+        journal_add_line(line, indent + len);
+
+        text += len;
+        while (*text == ' ')
+            ++text;
+    }
+}
+
+
+/*
+  paragraph num of para.dat as plain text: its lines joined, with '\n'
+  where an indented line starts a new paragraph; NULL if there is none
+  (gui_paragraph_scroll() turns line ends into 0, so accept both)
+*/
+
+static char *
+gui_paragraph_plain(int num)
+{
+    char *out;
+    int pos, end, n = 0;
+    int line_start = 1;
+    int spaces;
+
+    if (paragraphs == NULL || num < 0 || num > PARAGRAPHS_NUM)
+        return NULL;
+
+    pos = paragraphs_off[num];
+    for (end = pos; paragraphs[end] != 0x10; ++end)
+        ;
+    out = lotr_malloc(end - pos + 2);
+
+    while (pos < end) {
+        Uint8 c = paragraphs[pos];
+
+        if (c == 0x0d || c == 0 || c == 0x05) {
+            line_start = 1;
+            ++pos;
+            continue;
+        }
+        if (c == 0x0a) {
+            ++pos;
+            continue;
+        }
+        if (line_start) {
+            for (spaces = 0; paragraphs[pos + spaces] == ' '; ++spaces)
+                ;
+            pos += spaces;
+            while (n > 0 && out[n - 1] == ' ')
+                --n;            /* lines often end in a blank */
+            if (n > 0)
+                out[n++] = spaces >= 2 ? '\n' : ' ';
+            line_start = 0;
+            continue;
+        }
+        out[n++] = (c >= 0x20 && c < 0x7f) ? c : ' ';
+        ++pos;
+    }
+    out[n] = 0;
+    return out;
+}
+
+
+static void
+journal_build_lines(void)
+{
+    const JournalEntry *e;
+    char line[JOURNAL_WIDTH + 1];
+    char *text;
+    int region = -2;
+    int i, n;
+
+    for (i = 0; i < journal_lines_num; ++i)
+        free(journal_lines[i]);
+    journal_lines_num = 0;
+
+    for (i = 0; i < journal_size(); ++i) {
+        e = journal_entry(i);
+
+        /* a heading whenever the story moves to another region */
+        if (e->map / 2 != region / 2 || region == -2) {
+            if (journal_lines_num > 0)
+                journal_add_line("", 0);
+            n = snprintf(line, sizeof(line), "-- %s --",
+                         e->map >= 0 ? game_map_name(e->map) : "?");
+            journal_add_line(line, n);
+            region = e->map;
+        }
+        journal_add_line("", 0);
+
+        switch (e->type) {
+            case JOURNAL_PARAGRAPH:
+                text = gui_paragraph_plain(e->paragraph);
+                if (text) {
+                    journal_wrap(text, 0);
+                    free(text);
+                } else {
+                    n = snprintf(line, sizeof(line), "(Paragraph %d)",
+                                 e->paragraph);
+                    journal_add_line(line, n);
+                }
+                break;
+
+            case JOURNAL_TALK:
+                if (e->topic[0])
+                    n = snprintf(line, sizeof(line), "%.19s, about %.12s:",
+                                 e->speaker, e->topic);
+                else
+                    n = snprintf(line, sizeof(line), "%.19s:", e->speaker);
+                journal_add_line(line, n);
+                journal_wrap(e->text, 2);
+                break;
+
+            default:
+                journal_wrap(e->text, 0);
+                break;
+        }
+    }
+
+    if (journal_lines_num == 0) {
+        journal_add_line("Your journal is empty.", 22);
+        journal_add_line("", 0);
+        journal_wrap("Story paragraphs, what people tell you and "
+                     "important events will be written here.", 0);
+    }
+}
+
+
+static void
+dialog_journal_draw(void)
+{
+    const char *text[JOURNAL_ROWS + 2];
+    int i;
+
+    for (i = 0; i < JOURNAL_ROWS; ++i)
+        text[i] = journal_top + i < journal_lines_num
+            ? journal_lines[journal_top + i] : "";
+    text[JOURNAL_ROWS] = "";
+    text[JOURNAL_ROWS + 1] = "Arrows PgUp PgDn scroll   X. Exit";
+
+    draw_scroll(0, 0, -JOURNAL_WIDTH, JOURNAL_ROWS + 2, text);
+}
+
+
+static void
+dialog_journal_scroll_to(int top)
+{
+    if (top > journal_lines_num - JOURNAL_ROWS)
+        top = journal_lines_num - JOURNAL_ROWS;
+    if (top < 0)
+        top = 0;
+    journal_top = top;
+}
+
+
+void
+dialog_journal_show(void)
+{
+    dialog_mode = DIALOG_JOURNAL;
+    dialog_confirm = 0;
+
+    journal_build_lines();
+    dialog_journal_scroll_to(journal_lines_num);    /* newest */
+
+    gui_clear();
+    game_draw_map();
+    dialog_journal_draw();
+}
+
+
+void
+dialog_journal_key(int key)
+{
+    if (key == 'x' || key == 'j') {
+        quit_menu();
+        return;
+    }
+
+    if (key == KEY_UP)
+        dialog_journal_scroll_to(journal_top - 1);
+    else if (key == KEY_DOWN)
+        dialog_journal_scroll_to(journal_top + 1);
+    else if (key == KEY_PAGEUP)
+        dialog_journal_scroll_to(journal_top - (JOURNAL_ROWS - 1));
+    else if (key == KEY_PAGEDOWN)
+        dialog_journal_scroll_to(journal_top + (JOURNAL_ROWS - 1));
+    else if (key == KEY_HOME)
+        dialog_journal_scroll_to(0);
+    else if (key == KEY_END)
+        dialog_journal_scroll_to(journal_lines_num);
+    else
+        return;
+
+    dialog_journal_draw();
+}
+
+
+
+/*
   parse options menu keyboard input
 */
 
@@ -2400,6 +2664,11 @@ Character *dialog_questioned_character;
 int dialog_talk_character_text;
 int dialog_talk_character_id;
 
+/* for the journal: keyword of the question being answered, and whether
+   the answer is just the character's reply to an unknown question */
+static char dialog_talk_topic[24];
+static int dialog_talk_default_answer;
+
 void
 dialog_talk_show(int character_id, int text_id)
 {
@@ -2445,7 +2714,14 @@ dialog_talk_show(int character_id, int text_id)
             else
 #endif
                 text = game_get_text(text_id);
+
+            if (!dialog_talk_default_answer)
+                journal_add_talk(character->name,
+                                 dialog_talk_topic[0] ? dialog_talk_topic
+                                 : NULL, text);
         }
+        dialog_talk_topic[0] = 0;
+        dialog_talk_default_answer = 0;
 #endif
     } /* character_id != -1 */
     else {
@@ -2552,6 +2828,7 @@ dialog_question_key(int key)
     char *texts;
     int answer, ans;
     int i, j, len;
+    int matched = 0;
 #ifdef WIZARD_MODE
     int reg;
 #endif
@@ -2596,10 +2873,21 @@ dialog_question_key(int key)
 
                 if (!strncmp(texts + i, dialog_question_text, len)) {
                     answer = ans;
+                    matched = len > 0;  /* len 0 is the default reply */
                     break;
                 }
 
                 i = j;
+            }
+
+            /* a keyword matched: note it as the topic */
+            if (matched) {
+                snprintf(dialog_talk_topic, sizeof(dialog_talk_topic),
+                         "%.*s", len, texts + i);
+                dialog_talk_default_answer = 0;
+            } else {
+                dialog_talk_topic[0] = 0;
+                dialog_talk_default_answer = 1;
             }
             dialog_talk_show(dialog_questioned_character->id, answer);
 #ifdef WIZARD_MODE
@@ -3469,6 +3757,10 @@ gui_frame(void)
                 dialog_view_show();
                 break;
 
+            case 'j':
+                dialog_journal_show();
+                break;
+
 #ifndef DEMO
             case KEY_QUICKSAVE:
                 gui_quicksave();
@@ -3519,6 +3811,10 @@ gui_frame(void)
 
             case DIALOG_SETTINGS:
                 dialog_settings_key(key);
+                break;
+
+            case DIALOG_JOURNAL:
+                dialog_journal_key(key);
                 break;
 
             case DIALOG_MESSAGE:

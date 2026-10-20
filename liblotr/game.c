@@ -33,6 +33,7 @@
 #include "game.h"
 #include "graphics.h"
 #include "gui.h"
+#include "journal.h"
 #include "lotr_sdl.h"
 #include "map.h"
 #include "object.h"
@@ -373,6 +374,8 @@ game_new(void)
     game_original_leader = NULL;
     game_tmp_leader = NULL;
 
+    journal_clear();
+
     game_autosave_pending = 0;
 }
 
@@ -700,6 +703,10 @@ game_save(int n)
 
     lotr_save_prop_int(node, "leader", leader->id);
 
+    node = xmlNewNode(NULL, (const xmlChar *)"journal");
+    xmlAddChild(root, node);
+    journal_save(node);
+
     node = xmlNewNode(NULL, (const xmlChar *)"saved_position");
     xmlAddChild(root, node);
 
@@ -826,6 +833,8 @@ game_load(int n)
         saved_position_map = -1;
     }
 
+
+    journal_load(lotr_get_subnode(root, (const xmlChar *)"journal", 0));
 
     xmlFreeDoc(doc);
 
