@@ -38,8 +38,8 @@ at a data folder.
 
 - `CD_VERSION` is **on** (data in `<exe dir>/cd`). Lots of code differs under
   `#ifdef CD_VERSION`; check both sides when editing.
-- `SCREEN_FACT` is 4 only with libhqx, otherwise 1. Framebuffer is 320x200,
-  palettised. `PIXEL_PRECISE` is 0.
+- `SCREEN_FACT` is always 1 (libhqx build option removed). Framebuffer is
+  320x200, palettised. `PIXEL_PRECISE` is 0.
 - `TTT` (The Two Towers) and `EXTENDED` (Python scripting) are off.
 
 ## Architecture facts worth knowing
@@ -67,6 +67,15 @@ at a data folder.
   "magical": scrambled P/B f_codes and frame-rate code; `mpg.c` recovers the
   f_code (TSN 3/8 method from DOSBox Staging). `pl_mpeg.h` is vendored and
   patched in four places marked `LOTR patch`. Keep them if you update it.
+- **Display filters:** `lotr_show_screen()` in `lotr_sdl2.c` presents the
+  frame as sharp (default), smooth (hq4x, then linear) or CRT (3x nearest,
+  linear, scanline overlay sized to the integer window scale). F10 cycles,
+  handled in `lotr_poll_events()`. hq4x is vendored (`hq4x.c`, `hqx.h`,
+  `hqx_common.h`, from grom358/hqx) with three `LOTR patch` changes; the
+  harness checked it byte-identical to the original library.
+- **Settings:** `lotr_setting_get/set()` in `utils.c` read and rewrite
+  `settings.txt` ("key = value", other lines kept): next to the exe on
+  Windows, `~/.lotr` elsewhere. Keys so far: `display`.
 - **Music:** the CD editions used CD audio. `cdmusic.c` plays ripped
   `cd/music/trackNN.(ogg|flac|mp3|wav)` with settings in `music.txt`
   (playlist, volume, `cue N track`, `combat`, `victory`). Script music cues
