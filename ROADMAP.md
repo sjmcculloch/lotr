@@ -16,7 +16,7 @@ explicitly out of scope.
    fullscreen in a menu, saved to a settings file next to the exe.
 
 ## Medium
-5. **Journal**: a scrollable log of every paragraph read, conversation and
+5. ~~**Journal**~~ (done): a scrollable log of every paragraph read, conversation and
    quest hint, saved alongside the save game. Opened with a key (J).
 6. **Map overlay**: a full-screen map of explored areas (tools/maps2bmp.c
    and tools/ripmaps.c already render maps).
