@@ -98,6 +98,11 @@ extern int lotr_key_ctrl();
 
 
 
+#if SDL_MAJOR_VERSION >= 2
+/* renderer, for drawing movies straight to the window */
+extern SDL_Renderer *lotr_sdl_renderer(void);
+#endif
+
 /* shows a new screen */
 extern void lotr_show_screen(Uint8 *newscreen);
 

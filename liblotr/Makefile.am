@@ -6,6 +6,9 @@ liblotr_la_SOURCES = \
 	archive.h \
 	av.c \
 	av.h \
+	mpg.c \
+	mpg.h \
+	pl_mpeg.h \
 	building_enters.h \
 	cartoon.c \
 	cartoon.h \

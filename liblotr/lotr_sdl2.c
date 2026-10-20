@@ -488,6 +488,13 @@ lotr_input_enable(void)
 /*
   shows a new screen
 */
+SDL_Renderer *
+lotr_sdl_renderer(void)
+{
+    return main_window_renderer;
+}
+
+
 void
 lotr_show_screen(Uint8 *newscreen)
 {

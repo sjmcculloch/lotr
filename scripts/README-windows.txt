@@ -4,8 +4,12 @@ Modern Windows build of the open-source engine recreation
 
 SETUP
 -----
-1. Copy the game files from your CD edition (arts.dat and all the
-   other data and video files) into the "cd" folder next to lotr.exe.
+1. Copy the game files from your CD edition into the "cd" folder next
+   to lotr.exe, all in one flat folder with no subfolders:
+     - ReelMagic edition: everything from the disc's GAME folder AND
+       everything from its MOVIES folder (the .MPG cutscenes)
+     - Interplay CD edition: the data files and the .AV cutscenes
+   arts.dat must sit directly inside "cd".
 2. Double-click lotr.exe.
 
 If the files are in the wrong place, a message box says exactly
@@ -25,6 +29,7 @@ CONTROLS
   O  options      H  help          Q  quit
   Esc             cancel / options
   Alt+Enter, F11  toggle fullscreen
+  Any key         skip a cutscene (ReelMagic movies)
 
 ABOUT THIS BUILD
 ----------------
@@ -38,6 +43,9 @@ Changes in this build:
   - sharp, whole-number pixel scaling; window sized to your screen
   - fullscreen toggle
   - missing-data error shown as a dialog
+  - plays the ReelMagic edition's MPEG-1 film cutscenes in full colour
+    with full-quality sound (decoder: pl_mpeg, MIT licence); a missing
+    cutscene is skipped instead of quitting the game
 
 The engine is licensed under the GNU LGPL (see COPYING.txt).
 SDL2 and SDL2_mixer are zlib-licensed (see the LICENSE-*.txt files).
