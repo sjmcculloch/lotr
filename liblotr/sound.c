@@ -181,9 +181,11 @@ sound_play(int index)
     else
         play_midi(sound_data[index + 8], sound_sizes[index + 8], 0);
 #else
-    if (index > 11)
+    /* as in the CD edition's LORD.EXE: 0-10 are CD music, 11 and up the
+       effects MAGICS, MAGICF, HIT1-4, MISS1-3, ... */
+    if (index >= 11 && index - 11 < SOUNDS_NUM)
         play_sample(sound_data[index - 11], sound_sizes[index - 11]);
-    else
+    else if (index >= 0 && index < 11)
         cdmusic_cue(index);     /* the original played a CD track here */
 #endif
 

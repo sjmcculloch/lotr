@@ -23,9 +23,14 @@
         combat 8             fight started
         victory 9            fight won
 
-    Without music.txt, every track at least a minute long goes in the
-    playlist. The settings menu stores "music" (on/off) and "music_volume"
-    in settings.txt; those override music.txt. Which track the original played for which cue is not
+    Defaults are what the original CD edition's LORD.EXE does (worked out
+    from its code): script music cue i (0-10) plays track i + 2, a fight
+    starts with track 6 and a won fight plays track 9. Tracks 2-5 were its
+    looping background music, so they are the default playlist; a cue for
+    a playlist track switches the background to it instead of playing it
+    once. music.txt overrides any of this. The settings menu stores
+    "music" (on/off) and "music_volume" in settings.txt; those override
+    music.txt. Which track the original played for which cue is not
     documented, so cues do nothing unless assigned; each one is logged.
 
 *****************************************************************************/
@@ -45,6 +50,12 @@
 
 #define MAX_TRACK 99
 #define MAX_CUES 12
+
+/* the original's mapping (LORD.EXE, CD edition) */
+#define DEFAULT_CUES      11    /* cues 0-10 play track cue + 2 */
+#define DEFAULT_COMBAT     6
+#define DEFAULT_VICTORY    9
+static const int default_playlist[] = { 2, 3, 4, 5 };
 
 static int initialised = 0;
 static int available = 0;       /* mixer open and at least one track */
@@ -185,8 +196,8 @@ read_config(void)
         } else if (strcmp(word, "volume") == 0 && sscanf(p, "%d", &a) == 1) {
             volume = a < 0 ? 0 : a > 100 ? 100 : a;
         } else if (strcmp(word, "cue") == 0 && sscanf(p, "%d %d", &a, &b) == 2) {
-            if (a >= 0 && a < MAX_CUES && b >= 1 && b <= MAX_TRACK)
-                cue_track[a] = b;
+            if (a >= 0 && a < MAX_CUES && b >= 0 && b <= MAX_TRACK)
+                cue_track[a] = b;       /* track 0: the cue plays nothing */
         } else if (strcmp(word, "combat") == 0 && sscanf(p, "%d", &a) == 1) {
             combat_track = a;
         } else if (strcmp(word, "victory") == 0 && sscanf(p, "%d", &a) == 1) {
@@ -211,6 +222,11 @@ init(void)
     if (!Mix_QuerySpec(&freq, &format, &channels))
         return;                 /* sound is off */
 
+    for (t = 0; t < DEFAULT_CUES; ++t)
+        cue_track[t] = t + 2;
+    combat_track = DEFAULT_COMBAT;
+    victory_track = DEFAULT_VICTORY;
+
     read_config();
 
     /* the settings menu overrides music.txt */
@@ -223,7 +239,15 @@ init(void)
     }
 
     if (!have_playlist_line) {
-        /* no playlist given: every track of at least a minute */
+        /* no playlist given: the original's background tracks */
+        for (t = 0; t < (int)(sizeof(default_playlist)
+                              / sizeof(default_playlist[0])); ++t)
+            if (track_path(default_playlist[t], path, sizeof(path)))
+                playlist[playlist_len++] = default_playlist[t];
+    }
+
+    if (!have_playlist_line && playlist_len == 0) {
+        /* none of those ripped: every track of at least a minute */
         for (t = 1; t <= MAX_TRACK; ++t) {
             Mix_Music *m;
             double len;
@@ -414,8 +438,28 @@ play_cue_track(const char *what, int index, int track)
 void
 cdmusic_cue(int index)
 {
-    play_cue_track("cue", index,
-                   (index >= 0 && index < MAX_CUES) ? cue_track[index] : 0);
+    int track = (index >= 0 && index < MAX_CUES) ? cue_track[index] : 0;
+    int i;
+
+    /* a background track becomes the background, as in the original,
+       where tracks 2-5 looped */
+    init();
+    for (i = 0; track > 0 && i < playlist_len; ++i)
+        if (playlist[i] == track) {
+            fprintf(stderr, "lotr: music cue %d -> track %d (background)\n",
+                    index, track);
+            if (!available || user_off || paused)
+                return;
+            if (playing_track == track && !oneshot)
+                return;         /* already playing it */
+            bg_index = i;
+            bg_pos = 0.0;
+            oneshot = 0;
+            play_background();
+            return;
+        }
+
+    play_cue_track("cue", index, track);
 }
 
 

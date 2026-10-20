@@ -1199,10 +1199,19 @@ combat_attack(Character *who, Character *whom)
     }
     fprintf(stderr, "lotr: combat - %s\n", combat_result_text);
 
+#ifndef CD_VERSION
     if (hits)
         sound_play(10);
     else
         sound_play(11);
+#else
+    /* CD numbering: 10 and 11 would be music cues; the CD edition plays
+       one of HIT1-4 (13-16) or MISS1-3 (17-19) */
+    if (hits)
+        sound_play(12 + lotr_rnd(4));   /* lotr_rnd(n) is 1..n */
+    else
+        sound_play(16 + lotr_rnd(3));
+#endif
 
 }
 

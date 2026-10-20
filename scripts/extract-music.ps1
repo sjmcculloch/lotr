@@ -111,25 +111,32 @@ $cfg = Join-Path $OutDir 'music.txt'
 if (Test-Path -LiteralPath $cfg) {
     Write-Host "Kept your existing music.txt."
 } else {
-    $long = @($summary | Where-Object { $_.Seconds -ge 60 } | ForEach-Object { $_.Track })
-    $short = @($summary | Where-Object { $_.Seconds -lt 60 } | ForEach-Object { $_.Track })
+    # the original's looping background tracks, if this disc has them
+    $long = @(2, 3, 4, 5 | Where-Object { @($summary.Track) -contains $_ })
+    if ($long.Count -eq 0) {
+        $long = @($summary | Where-Object { $_.Seconds -ge 60 } | ForEach-Object { $_.Track })
+    }
     $lines = @(
         '# Lord of the Rings - music settings',
         '#',
+        '# The defaults are what the original CD edition (LORD.EXE) plays.',
+        '#',
         '# Background music: CD track numbers, played in order and repeated.',
+        '# (The original looped one of tracks 2-5.)',
         "playlist $($long -join ' ')",
         '',
-        '# Music volume, 0-100.',
+        '# Music volume, 0-100 (the in-game settings screen overrides it).',
         'volume 80',
         '',
-        ('# Short tracks (likely stingers): ' + ($short -join ' ')),
-        '# The game fires music cues that the original CD version played from',
-        '# disc; which track went with which cue is not documented. Every cue',
-        '# is written to lotr.log as you play. To give a cue a track, add e.g.',
-        '#   cue 3 7        play track 7 once when cue 3 fires',
-        '#   combat 8       when a fight starts',
+        '# Built in, no need to list them:',
+        '#   music cue N (0-10) plays track N+2; a cue for a playlist track',
+        '#   switches the background to it, other tracks play once',
+        '#   combat 6       when a fight starts',
         '#   victory 9      when a fight is won',
-        '# then the background playlist carries on.',
+        '# To change one, add a line such as',
+        '#   cue 3 7        play track 7 when cue 3 fires (0: play nothing)',
+        '#   combat 8',
+        '# Every cue is written to lotr.log as you play.',
         '',
         '# Track lengths:'
     )
