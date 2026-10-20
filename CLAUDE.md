@@ -113,10 +113,13 @@ at a data folder.
   The menu font has no `#`; check glyphs before using new symbols.
 - **Music:** the CD editions used CD audio. `cdmusic.c` plays ripped
   `cd/music/trackNN.(ogg|flac|mp3|wav)` with settings in `music.txt`
-  (playlist, volume, `cue N track`, `combat`, `victory`). Script music cues
-  (`sound_play(index<=11)` in `sound.c`) are logged and unassigned until the
-  original mapping is known. Position is tracked with our own clock because
-  SDL_mixer's position ignores seeks.
+  (playlist, volume, `cue N track`, `combat`, `victory`). Defaults come
+  from the CD edition's GAME\LORD.EXE (EXEPACK'd; its `play_music(i)`
+  plays track i+2 for i 0-10, i >= 11 are effects in `sounds_cd.h` order;
+  tracks 2-5 loop; combat start plays index 4, victory index 7): cue i ->
+  track i+2, combat 6, victory 9, playlist 2-5. `sound_play()`: 0-10 cue,
+  11+ effect. Position is tracked with our own clock because SDL_mixer's
+  position ignores seeks.
 - `scripts/extract-data-track.ps1` / `extract-music.ps1` ship in `tools/`
   and were tested with pwsh against synthetic BIN/CUE images.
 

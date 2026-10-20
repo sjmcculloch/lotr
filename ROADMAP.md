@@ -24,7 +24,7 @@ explicitly out of scope.
    first, then click-to-move.
 
 ## Big
-8. **Correct CD music cues**: read the original DOS executable from the disc
+8. ~~**Correct CD music cues**~~ (done): read the original DOS executable from the disc
    to find which CD track it played for each script cue, combat start and
    combat win; ship that mapping as the default music.txt.
 9. **Narrated paragraphs**: text-to-speech audio for para.dat paragraphs,

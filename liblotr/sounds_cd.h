@@ -1,5 +1,6 @@
 
-#define SOUNDS_NUM 32
+/* in the order of LORD.EXE's effect table: sound_play(11 + i) is entry i */
+#define SOUNDS_NUM 33
 
 char *sound_names[] = { "magics.adl",
     "magicf.adl",
@@ -22,6 +23,7 @@ char *sound_names[] = { "magics.adl",
     "qhit.adl",
     "hhit.adl",
     "ihit.adl",
+    "cry.adl",
     "grunt.adl",
     "yell.adl",
     "shriek.adl",

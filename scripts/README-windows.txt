@@ -18,10 +18,13 @@ The CD editions' music is CD audio, which has to be ripped from the
 disc image. Put tools\extract-music.ps1 next to your .bin and .cue
 (e.g. in the folder that also holds "cd") and run, in that folder:
     powershell -ExecutionPolicy Bypass -File .\extract-music.ps1
-It writes track02.wav ... into cd\music plus a music.txt you can edit:
-the background playlist, the volume, and which tracks to play for the
-game's music cues. Each cue the game fires is noted in lotr.log.
-Options > M switches it on and off; Options > C sets its volume.
+It writes track02.wav ... into cd\music plus a music.txt you can edit.
+The music follows the original CD edition, as read from its program:
+tracks 2-5 are the background, the story's music cues play track
+cue + 2, a fight starts with track 6 and a won fight plays track 9.
+music.txt can change any of it (playlist, volume, cue, combat, victory);
+each cue the game fires is noted in lotr.log. Options > M switches the
+music on and off; Options > C sets its volume.
 
 If you have a .bin/.cue disc image, tools\extract-data-track.ps1 turns
 its data track into an .iso that Windows and 7-Zip can open.
@@ -133,6 +136,8 @@ Changes in this build:
     in each saved game
   - map of the explored area (Tab), kept in each saved game
   - mouse: menus, dialogs and the main menu; click on the map to walk
+  - CD music cues, fight and victory music as in the original CD
+    edition; the right sound effects for hits, misses and "cry"
   - diagnostics written to lotr.log next to lotr.exe
   - plays the CD soundtrack (ripped from the disc) as background music,
     pausing for films and resuming where it left off
