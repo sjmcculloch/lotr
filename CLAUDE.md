@@ -81,7 +81,8 @@ at a data folder.
   patched in four places marked `LOTR patch`. Keep them if you update it.
 - **Screen size:** `screen_width` (graphics.c) is 320, or wider with
   widescreen: `lotr_screen_width_wanted()` from the desktop's shape,
-  multiple of 8, max 640; `graphics_apply_screen_mode()` reallocates.
+  multiple of 8, max 864 (32:9 with 4:3 pixels; Scott's monitor is
+  5120x1440); `graphics_apply_screen_mode()` reallocates.
   The engine's large-screen path draws the map full height with the menu
   bar (centred) over it. Cartoons and .av frames are centred. With the
   4:3 pixel shape the backend's logical size is w x 240 (no integer

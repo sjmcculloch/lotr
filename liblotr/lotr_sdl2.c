@@ -84,8 +84,9 @@ static int fb_w = SCREEN_WIDTH, fb_h = SCREEN_HEIGHT;
 static int aspect_43 = 0;
 static int widescreen = 0;
 
-/* widest game screen widescreen will use */
-#define WIDESCREEN_MAX 640
+/* widest game screen widescreen will use: enough for a 32:9 monitor
+   with 4:3 pixels (853) */
+#define WIDESCREEN_MAX 864
 
 /* sharp pixels at a non-whole scale: enlarged by whole numbers (at most
    this much) with sharp edges, then smoothly to the exact size */
