@@ -215,12 +215,13 @@ cartoon_play(char *name)
 
         repeats = 0;
 
-        /* TODO cartoons are 320x200 center them on the screen */
-
-        /* reset screen */
-        graphics_set_window(0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1);
-        bzero(bufscreen->data, SCREEN_WIDTH * SCREEN_HEIGHT);
+        /* reset screen; cartoons are 320x200, centred on a wider screen */
+        graphics_set_window(0, 0, screen_width - 1, screen_height - 1);
         graphics_clear_screen();
+        graphics_set_window((screen_width - SCREEN_WIDTH) / 2, 0,
+                            (screen_width - SCREEN_WIDTH) / 2 + SCREEN_WIDTH - 1,
+                            SCREEN_HEIGHT - 1);
+        bzero(bufscreen->data, SCREEN_WIDTH * SCREEN_HEIGHT);
         graphics_update_screen();
 
 

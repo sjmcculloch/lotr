@@ -68,11 +68,28 @@ static int scanline_scale = 0;
 #define CRT_PRESCALE 3
 
 static void lotr_apply_fullscreen(int on);
+static void lotr_apply_view(void);
+static int lotr_view_height(void);
+static int lotr_view_to_screen(int lx, int ly, int *x, int *y);
 static void lotr_mouse_push(int button, int x, int y);
 
 /* CRT: brighten by this many 256ths to make up for the light the
    scanlines take away (about 1/8) */
 #define CRT_BOOST 292
+
+/* size of the game's screen: 320x200, wider in widescreen */
+static int fb_w = SCREEN_WIDTH, fb_h = SCREEN_HEIGHT;
+
+/* show pixels 1.2 times taller than wide, as a 1990 4:3 monitor did */
+static int aspect_43 = 0;
+static int widescreen = 0;
+
+/* widest game screen widescreen will use */
+#define WIDESCREEN_MAX 640
+
+/* sharp pixels at a non-whole scale: enlarged by whole numbers (at most
+   this much) with sharp edges, then smoothly to the exact size */
+#define SHARP_PRESCALE_MAX 6
 
 /* keyboard buffer */
 #define KEYBOARDBUFFERESIZE 16
@@ -163,19 +180,29 @@ lotr_system_init(void)
     /* Sharp pixels rather than bilinear blur when the image is scaled up */
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
 
-    /* Open the window at the largest whole multiple of 320x200 that fits
-       in roughly 85% of the desktop, instead of a postage stamp */
-    int win_w = SCREEN_WIDTH * win_fact;
-    int win_h = SCREEN_HEIGHT * win_fact;
+    {
+        char v[16];
+        if (lotr_setting_get("aspect", v, sizeof(v)))
+            aspect_43 = !SDL_strcasecmp(v, "4:3");
+        if (lotr_setting_get("widescreen", v, sizeof(v)))
+            widescreen = !SDL_strcasecmp(v, "on");
+    }
+    fb_w = lotr_screen_width_wanted() * win_fact;
+    fb_h = SCREEN_HEIGHT * win_fact;
+
+    /* Open the window at the largest whole multiple of the picture that
+       fits in roughly 85% of the desktop, instead of a postage stamp */
+    int win_w = fb_w;
+    int win_h = lotr_view_height();
     {
         SDL_DisplayMode dm;
         if (SDL_GetDesktopDisplayMode(0, &dm) == 0) {
-            int sx = (dm.w * 85 / 100) / SCREEN_WIDTH;
-            int sy = (dm.h * 85 / 100) / SCREEN_HEIGHT;
+            int sx = (dm.w * 85 / 100) / win_w;
+            int sy = (dm.h * 85 / 100) / win_h;
             int s = sx < sy ? sx : sy;
             if (s > 1) {
-                win_w = SCREEN_WIDTH * s;
-                win_h = SCREEN_HEIGHT * s;
+                win_w *= s;
+                win_h *= s;
             }
         }
     }
@@ -196,12 +223,7 @@ lotr_system_init(void)
         fprintf(stderr, "Couldn't get window renderer: %s\n", SDL_GetError());
         exit(1);
     }
-    SDL_RenderSetLogicalSize(main_window_renderer,
-            SCREEN_WIDTH * win_fact, SCREEN_HEIGHT * win_fact);
-#if SCREEN_FACT == 1
-    /* whole-number scaling keeps every pixel the same size */
-    SDL_RenderSetIntegerScale(main_window_renderer, SDL_TRUE);
-#endif
+    lotr_apply_view();
 
     memset(active_palette, '\0', sizeof(active_palette));
 
@@ -466,16 +488,16 @@ lotr_poll_events(void)
                     break;
                 /* the renderer's logical size makes these screen pixels;
                    clicks on the black bars around the picture are dropped */
-                if (event.button.x < 0 || event.button.y < 0
-                    || event.button.x >= SCREEN_WIDTH
-                    || event.button.y >= SCREEN_HEIGHT)
-                    break;
-                if (event.button.button == SDL_BUTTON_LEFT)
-                    lotr_mouse_push(LOTR_MOUSE_LEFT, event.button.x,
-                                    event.button.y);
-                else if (event.button.button == SDL_BUTTON_RIGHT)
-                    lotr_mouse_push(LOTR_MOUSE_RIGHT, event.button.x,
-                                    event.button.y);
+                {
+                    int mx, my;
+                    if (!lotr_view_to_screen(event.button.x, event.button.y,
+                                             &mx, &my))
+                        break;
+                    if (event.button.button == SDL_BUTTON_LEFT)
+                        lotr_mouse_push(LOTR_MOUSE_LEFT, mx, my);
+                    else if (event.button.button == SDL_BUTTON_RIGHT)
+                        lotr_mouse_push(LOTR_MOUSE_RIGHT, mx, my);
+                }
                 break;
 
             case SDL_MOUSEWHEEL:
@@ -611,11 +633,7 @@ lotr_mouse_held(int *x, int *y)
         return 0;
 
     SDL_RenderWindowToLogical(main_window_renderer, wx, wy, &lx, &ly);
-    if (lx < 0 || ly < 0 || lx >= SCREEN_WIDTH || ly >= SCREEN_HEIGHT)
-        return 0;
-    *x = (int)lx;
-    *y = (int)ly;
-    return 1;
+    return lotr_view_to_screen((int)lx, (int)ly, x, y);
 }
 
 
@@ -659,6 +677,107 @@ lotr_sdl_renderer(void)
 {
     return main_window_renderer;
 }
+
+
+/*
+  picture shape: the 4:3 aspect and widescreen
+*/
+
+/* height of the picture as shown, in game pixels: 1.2 times the game's
+   screen with the 4:3 aspect */
+static int
+lotr_view_height(void)
+{
+    return aspect_43 ? fb_h * 6 / 5 : fb_h;
+}
+
+
+/* point lx, ly of the shown picture -> game pixel; 0 if outside */
+static int
+lotr_view_to_screen(int lx, int ly, int *x, int *y)
+{
+    if (lx < 0 || ly < 0 || lx >= fb_w || ly >= lotr_view_height())
+        return 0;
+    *x = lx;
+    *y = ly * fb_h / lotr_view_height();
+    return 1;
+}
+
+
+/* the renderer shows the picture at its shape, letterboxed; square
+   pixels keep whole-number scaling, which 1.2 times taller rows can't */
+static void
+lotr_apply_view(void)
+{
+    if (main_window_renderer == NULL)
+        return;
+    SDL_RenderSetLogicalSize(main_window_renderer, fb_w, lotr_view_height());
+    SDL_RenderSetIntegerScale(main_window_renderer,
+                              aspect_43 ? SDL_FALSE : SDL_TRUE);
+    scanline_scale = 0;
+}
+
+
+int
+lotr_screen_width_wanted(void)
+{
+    SDL_DisplayMode dm;
+    int w;
+
+    if (!widescreen || SDL_GetDesktopDisplayMode(0, &dm) != 0 || dm.h <= 0)
+        return SCREEN_WIDTH;
+
+    /* as wide as the monitor's shape, counting taller 4:3 pixels, in
+       whole 8 pixel steps (the size of the interface pieces) */
+    w = (int)((double)SCREEN_HEIGHT * dm.w / dm.h * (aspect_43 ? 1.2 : 1.0));
+    w -= w % 8;
+    if (w < SCREEN_WIDTH)
+        w = SCREEN_WIDTH;
+    if (w > WIDESCREEN_MAX)
+        w = WIDESCREEN_MAX;
+    return w;
+}
+
+
+void
+lotr_system_set_screen_size(int w, int h)
+{
+    fb_w = w;
+    fb_h = h;
+    lotr_apply_view();
+}
+
+
+int
+lotr_aspect_43(void)
+{
+    return aspect_43;
+}
+
+
+void
+lotr_set_aspect_43(int on)
+{
+    aspect_43 = on;
+    lotr_apply_view();
+    lotr_setting_set("aspect", on ? "4:3" : "square");
+}
+
+
+int
+lotr_widescreen(void)
+{
+    return widescreen;
+}
+
+
+void
+lotr_set_widescreen(int on)
+{
+    widescreen = on;
+    lotr_setting_set("widescreen", on ? "on" : "off");
+}
+
 
 
 /*
@@ -822,15 +941,17 @@ lotr_draw_scanlines(void)
     Uint32 *line;
     Uint8 alpha;
 
+    /* window pixels per game row (1.2 times more with the 4:3 aspect) */
     SDL_RenderGetScale(main_window_renderer, &sx, &sy);
+    sy = sy * lotr_view_height() / fb_h;
     n = (int)(sy + 0.5f);
     if (n < 3)
         return;
 
-    if (scanline_texture == NULL || scanline_scale != n) {
+    if (scanline_texture == NULL || scanline_scale != n * 10000 + fb_h) {
         if (scanline_texture != NULL)
             SDL_DestroyTexture(scanline_texture);
-        rows = SCREEN_HEIGHT * n;
+        rows = fb_h * n;
         scanline_texture = SDL_CreateTexture(main_window_renderer,
                                              SDL_PIXELFORMAT_ARGB8888,
                                              SDL_TEXTUREACCESS_STATIC, 1,
@@ -857,8 +978,11 @@ lotr_draw_scanlines(void)
         SDL_UpdateTexture(scanline_texture, NULL, line, sizeof(Uint32));
         free(line);
         SDL_SetTextureBlendMode(scanline_texture, SDL_BLENDMODE_BLEND);
-        SDL_SetTextureScaleMode(scanline_texture, SDL_ScaleModeNearest);
-        scanline_scale = n;
+        /* rows match window rows only at a whole scale */
+        SDL_SetTextureScaleMode(scanline_texture,
+                                sy == (float)n ? SDL_ScaleModeNearest
+                                : SDL_ScaleModeLinear);
+        scanline_scale = n * 10000 + fb_h;
     }
 
     SDL_RenderCopy(main_window_renderer, scanline_texture, NULL, NULL);
@@ -874,14 +998,14 @@ lotr_present_smooth(SDL_Surface *frame)
 {
     SDL_Texture *texture;
 
-    texture = lotr_filter_texture(SCREEN_WIDTH * 4, SCREEN_HEIGHT * 4);
+    texture = lotr_filter_texture(fb_w * 4, fb_h * 4);
     if (texture == NULL)
         return;
 
     hq4x_32((const uint32_t *)frame->pixels, filter_pixels,
-            SCREEN_WIDTH, SCREEN_HEIGHT);
+            fb_w, fb_h);
     SDL_UpdateTexture(texture, NULL, filter_pixels,
-                      SCREEN_WIDTH * 4 * sizeof(Uint32));
+                      fb_w * 4 * sizeof(Uint32));
     SDL_RenderCopy(main_window_renderer, texture, NULL, NULL);
 }
 
@@ -904,16 +1028,16 @@ lotr_present_crt(SDL_Surface *frame)
         for (i = 0; i < 256; ++i)
             boost[i] = i * CRT_BOOST / 256 > 255 ? 255 : i * CRT_BOOST / 256;
 
-    w = SCREEN_WIDTH * CRT_PRESCALE;
-    texture = lotr_filter_texture(w, SCREEN_HEIGHT * CRT_PRESCALE);
+    w = fb_w * CRT_PRESCALE;
+    texture = lotr_filter_texture(w, fb_h * CRT_PRESCALE);
     if (texture == NULL)
         return;
 
-    for (y = 0; y < SCREEN_HEIGHT; ++y) {
+    for (y = 0; y < fb_h; ++y) {
         src = (const Uint32 *)((const Uint8 *)frame->pixels
                                + y * frame->pitch);
         dst = filter_pixels + (size_t)y * CRT_PRESCALE * w;
-        for (x = 0; x < SCREEN_WIDTH; ++x) {
+        for (x = 0; x < fb_w; ++x) {
             c = 0xff000000u | (Uint32)boost[(src[x] >> 16) & 0xff] << 16
                 | (Uint32)boost[(src[x] >> 8) & 0xff] << 8
                 | boost[src[x] & 0xff];
@@ -933,6 +1057,61 @@ lotr_present_crt(SDL_Surface *frame)
 
 
 /*
+  sharp pixels at a non-whole scale (the 4:3 aspect): enlarge by whole
+  numbers with sharp edges, then smoothly to the exact size, so every
+  row and column looks the same and only their edges blend
+*/
+
+static void
+lotr_present_sharp_scaled(SDL_Surface *frame)
+{
+    SDL_Texture *texture;
+    const Uint32 *src;
+    Uint32 *dst;
+    float sx, sy;
+    int kx, ky, w, x, y, i;
+
+    /* whole numbers at or above the window pixels per game pixel */
+    SDL_RenderGetScale(main_window_renderer, &sx, &sy);
+    sy = sy * lotr_view_height() / fb_h;
+    kx = (int)sx;
+    if (kx < sx)
+        kx++;
+    ky = (int)sy;
+    if (ky < sy)
+        ky++;
+    if (kx < 1)
+        kx = 1;
+    if (ky < 1)
+        ky = 1;
+    if (kx > SHARP_PRESCALE_MAX)
+        kx = SHARP_PRESCALE_MAX;
+    if (ky > SHARP_PRESCALE_MAX)
+        ky = SHARP_PRESCALE_MAX;
+
+    w = fb_w * kx;
+    texture = lotr_filter_texture(w, fb_h * ky);
+    if (texture == NULL)
+        return;
+
+    for (y = 0; y < fb_h; ++y) {
+        src = (const Uint32 *)((const Uint8 *)frame->pixels
+                               + y * frame->pitch);
+        dst = filter_pixels + (size_t)y * ky * w;
+        for (x = 0; x < fb_w; ++x)
+            for (i = 0; i < kx; ++i)
+                *dst++ = src[x];
+        for (i = 1; i < ky; ++i)
+            memcpy(filter_pixels + ((size_t)y * ky + i) * w,
+                   filter_pixels + (size_t)y * ky * w, w * sizeof(Uint32));
+    }
+
+    SDL_UpdateTexture(texture, NULL, filter_pixels, w * sizeof(Uint32));
+    SDL_RenderCopy(main_window_renderer, texture, NULL, NULL);
+}
+
+
+/*
   shows a new screen
 */
 
@@ -948,12 +1127,12 @@ lotr_show_screen(Uint8 *newscreen)
 
     /* convert pixels to 8-bit SDL surface */
     src = SDL_CreateRGBSurfaceFrom(
-        newscreen, SCREEN_WIDTH, SCREEN_HEIGHT, 8, SCREEN_WIDTH, 0, 0, 0, 0);
+        newscreen, fb_w, fb_h, 8, fb_w, 0, 0, 0, 0);
     SDL_SetPaletteColors(src->format->palette, active_palette, 0, 256);
 
     SDL_RenderClear(main_window_renderer);
 
-    if (display_filter == LOTR_DISPLAY_SHARP) {
+    if (display_filter == LOTR_DISPLAY_SHARP && !aspect_43) {
         texture = SDL_CreateTextureFromSurface(main_window_renderer, src);
         SDL_RenderCopy(main_window_renderer, texture, NULL, NULL);
         SDL_DestroyTexture(texture);
@@ -963,8 +1142,10 @@ lotr_show_screen(Uint8 *newscreen)
         if (frame != NULL) {
             if (display_filter == LOTR_DISPLAY_SMOOTH)
                 lotr_present_smooth(frame);
-            else
+            else if (display_filter == LOTR_DISPLAY_CRT)
                 lotr_present_crt(frame);
+            else
+                lotr_present_sharp_scaled(frame);
             SDL_FreeSurface(frame);
         }
     }

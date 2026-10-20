@@ -250,7 +250,8 @@ av_play(char *name)
             }
 
 
-        pixmap_draw(av_frame, 53, 24);
+        /* frames are placed for a 320 wide screen: centre them */
+        pixmap_draw(av_frame, 53 + (screen_width - SCREEN_WIDTH) / 2, 24);
         graphics_update_screen();
         lotr_timer(66);
         lotr_poll_events();

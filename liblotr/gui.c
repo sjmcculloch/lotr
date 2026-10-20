@@ -678,8 +678,8 @@ main_menu_draw(void)
 {
     int life;
 
-    /* Keep x position from standard screen size */
-    gui_menu_x = 0;
+    /* the menu bar is 320 wide: centred on a wider screen */
+    gui_menu_x = (screen_width - gui_components[GUI_MENU]->width) / 2;
     gui_menu_y = screen_height - gui_components[GUI_MENU]->height;
 
     pixmap_draw(gui_components[GUI_MENU], gui_menu_x, gui_menu_y);
@@ -1596,6 +1596,8 @@ enum {
     SETTING_EFFECTS_VOLUME,
     SETTING_DISPLAY,
     SETTING_FULLSCREEN,
+    SETTING_ASPECT,
+    SETTING_WIDESCREEN,
     SETTINGS_NUM
 };
 
@@ -1620,7 +1622,8 @@ static void
 dialog_settings_draw(void)
 {
     static const char *labels[SETTINGS_NUM] = {
-        "Music", "Music volume", "Effects volume", "Display", "Fullscreen"
+        "Music", "Music volume", "Effects volume", "Display", "Fullscreen",
+        "Pixel shape", "Widescreen"
     };
     static const char *display_names[LOTR_DISPLAY_FILTERS] = {
         "Sharp", "Smooth", "CRT"
@@ -1651,9 +1654,17 @@ dialog_settings_draw(void)
                 snprintf(value, sizeof(value), "%s",
                          display_names[lotr_display_filter()]);
                 break;
-            default:
+            case SETTING_FULLSCREEN:
                 snprintf(value, sizeof(value), "%s",
                          lotr_fullscreen() ? "On" : "Off");
+                break;
+            case SETTING_ASPECT:
+                snprintf(value, sizeof(value), "%s",
+                         lotr_aspect_43() ? "4:3 (original)" : "Square");
+                break;
+            default:
+                snprintf(value, sizeof(value), "%s",
+                         lotr_widescreen() ? "On" : "Off");
                 break;
         }
         snprintf(lines[n++], SETTINGS_LINE_SIZE, "%c %-15s %.18s",
@@ -1728,9 +1739,20 @@ dialog_settings_key(int key)
             case SETTING_DISPLAY:
                 lotr_display_filter_step(delta);
                 break;
-            default:
+            case SETTING_FULLSCREEN:
                 lotr_set_fullscreen(!lotr_fullscreen());
                 break;
+            case SETTING_ASPECT:
+            case SETTING_WIDESCREEN:
+                /* both change the picture's shape; widescreen's width
+                   depends on the pixel shape too */
+                if (settings_row == SETTING_ASPECT)
+                    lotr_set_aspect_43(!lotr_aspect_43());
+                else
+                    lotr_set_widescreen(!lotr_widescreen());
+                graphics_apply_screen_mode();
+                dialog_settings_show();
+                return;
         }
 
     dialog_settings_draw();
@@ -1744,7 +1766,7 @@ dialog_settings_key(int key)
 */
 
 #define OVERVIEW_SIZE 176       /* pixels; the map is square */
-#define OVERVIEW_X    14
+#define OVERVIEW_X    (14 + (screen_width - SCREEN_WIDTH) / 2)
 #define OVERVIEW_Y    12
 
 static Pixmap *overview_map = NULL;     /* clean overview */
@@ -1850,7 +1872,8 @@ dialog_map_show(void)
     text[8] = "Tab. Close";
 
     gui_clear();
-    draw_scroll(196, OVERVIEW_Y, 12, 9, text);
+    draw_scroll(196 + (screen_width - SCREEN_WIDTH) / 2, OVERVIEW_Y, 12, 9,
+                text);
     overview_frame = 0;
     dialog_map_draw_marker(1);
 }

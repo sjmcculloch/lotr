@@ -596,7 +596,47 @@ cartoon_font_write_text(CartoonFont *font, int x, int y, char *text)
 void
 graphics_init(void)
 {
+    /* widescreen, unless a tool has asked for its own size already */
+    if (screen_width == SCREEN_WIDTH)
+        screen_width = lotr_screen_width_wanted();
     main_screen = malloc(screen_width * screen_height * sizeof(Uint8));
+    memset(main_screen, 0, screen_width * screen_height);
+    window_x = window_y = 0;
+    window_w = screen_width;
+    window_h = screen_height;
+    lotr_system_set_screen_size(screen_width, screen_height);
+}
+
+
+/*
+  resizes the game's screen to what the settings want (widescreen);
+  returns 1 if it changed, then everything must be drawn again
+*/
+
+int
+graphics_apply_screen_mode(void)
+{
+    int w = lotr_screen_width_wanted();
+    Uint8 *screen;
+
+    if (w == screen_width) {
+        lotr_system_set_screen_size(screen_width, screen_height);
+        return 0;
+    }
+
+    screen = malloc(w * screen_height);
+    if (screen == NULL)
+        return 0;
+    memset(screen, 0, w * screen_height);
+    free(main_screen);
+    main_screen = screen;
+    screen_width = w;
+    window_x = window_y = 0;
+    window_w = screen_width;
+    window_h = screen_height;
+    lotr_system_set_screen_size(screen_width, screen_height);
+    fprintf(stderr, "lotr: game screen %dx%d\n", screen_width, screen_height);
+    return 1;
 }
 
 

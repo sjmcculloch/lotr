@@ -128,6 +128,12 @@ extern void cartoon_font_write_text(CartoonFont *font, int x, int y,
 /* initializes screen */
 extern void graphics_init(void);
 
+/* size of the game's screen: 320x200, wider in widescreen */
+extern int screen_width, screen_height;
+
+/* resize the game's screen to the settings (widescreen); 1 if it changed */
+extern int graphics_apply_screen_mode(void);
+
 /* updates the screen */
 extern void graphics_update_screen(void);
 

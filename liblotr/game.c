@@ -236,7 +236,7 @@ game_load_map(int map)
     map_exit_building();
 #endif
 
-    graphics_set_window(0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1);
+    graphics_set_window(0, 0, screen_width - 1, screen_height - 1);
     graphics_clear_screen();
     graphics_update_screen();
     lotr_reset_keyboard();
@@ -1539,7 +1539,7 @@ game_draw_map(void)
 void
 game_init_graphics(void)
 {
-    graphics_set_window(0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1);
+    graphics_set_window(0, 0, screen_width - 1, screen_height - 1);
     graphics_clear_screen();
 
     gui_clear();

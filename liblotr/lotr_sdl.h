@@ -142,6 +142,19 @@ extern void lotr_display_filter_set(int filter);
 /* step through the display filters and remember the one chosen */
 extern void lotr_display_filter_step(int delta);
 
+/* picture shape: pixels 1.2 times taller as on a 4:3 monitor, and a
+   game screen as wide as the monitor; both remembered in settings.txt */
+extern int lotr_aspect_43(void);
+extern void lotr_set_aspect_43(int on);
+extern int lotr_widescreen(void);
+extern void lotr_set_widescreen(int on);   /* graphics_apply_screen_mode() */
+
+/* width of the game's screen the current settings want */
+extern int lotr_screen_width_wanted(void);
+
+/* the game's screen changed size */
+extern void lotr_system_set_screen_size(int w, int h);
+
 /* fullscreen on? */
 extern int lotr_fullscreen(void);
 
