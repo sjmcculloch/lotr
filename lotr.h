@@ -79,6 +79,22 @@
 #  define PREFIX
 #endif
 
+/* MinGW in strict modes defines only _WIN32 */
+#if defined(_WIN32) && !defined(WIN32)
+#  define WIN32
+#endif
+
+/* Data folder looked for next to the executable (see lotr_data_directory) */
+#if defined(DEMO)
+#  define DATA_SUBDIR "demo"
+#elif defined(TTT)
+#  define DATA_SUBDIR "towers"
+#elif defined(CD_VERSION)
+#  define DATA_SUBDIR "cd"
+#else
+#  define DATA_SUBDIR "lotr"
+#endif
+
 #ifdef DEMO
 #  if defined(WIN32)
 #    define DATA_DIRECTORY PREFIX "/demo"

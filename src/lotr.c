@@ -54,11 +54,15 @@ main(int argc, char *argv[])
 
     /* Check if game data is present */
     if (!lotr_file_exists("arts.dat")) {
-        fprintf(stderr, "Cannot find file \"arts.dat\"\n");
-        fprintf(stderr, "Please copy game data into the directory \"%s\"\n", DATA_DIRECTORY);
-#ifdef WIN32
-        system("pause");
-#endif
+        char message[1200];
+        snprintf(message, sizeof(message),
+                 "Cannot find the game data file \"arts.dat\".\n\n"
+                 "Copy the game files into:\n%s\n\n"
+                 "(or set the LOTR_DATA environment variable to their folder)",
+                 lotr_data_directory());
+        fprintf(stderr, "%s\n", message);
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Lord of the Rings",
+                                 message, NULL);
         exit(1);
     }
 

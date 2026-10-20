@@ -36,10 +36,51 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <math.h>
+#include <SDL.h>
+#ifdef WIN32
+#include <direct.h>
+#endif
 
+#ifdef WIN32
+#define HOME_DIR_STR "<game folder>/saves/"
+#else
 #define HOME_DIR_STR "$HOME/.lotr/"
+#endif
 
 char lotr_filename[1024];
+
+
+/*
+  directory containing the executable, with trailing separator
+*/
+static const char *
+lotr_base_path(void)
+{
+    static char *base = NULL;
+
+    if (base == NULL) {
+        base = SDL_GetBasePath();
+        if (base == NULL)
+            base = SDL_strdup("./");
+    }
+
+    return base;
+}
+
+
+static int
+lotr_dir_has_arts(const char *dir)
+{
+    char test[1100];
+    FILE *f;
+
+    snprintf(test, sizeof(test), "%s/arts.dat", dir);
+    f = fopen(test, "rb");
+    if (f == NULL)
+        return 0;
+    fclose(f);
+    return 1;
+}
 
 
 /*
@@ -74,6 +115,15 @@ lotr_malloc(int size)
 extern char *
 lotr_homedir_filename(const char *name)
 {
+#ifdef WIN32
+    /* saves live in a "saves" folder next to the executable */
+    char savedir[1024];
+
+    snprintf(savedir, sizeof(savedir), "%ssaves", lotr_base_path());
+    _mkdir(savedir);            /* fails harmlessly if it already exists */
+    snprintf(lotr_filename, sizeof(lotr_filename), "%s/%s", savedir, name);
+    return lotr_filename;
+#else
     char cwd[1024];
 #if !defined(AMIGA_OS4) && !defined(WIN32)
     char *home = getenv("HOME");
@@ -112,7 +162,7 @@ lotr_homedir_filename(const char *name)
 #endif
 
     return lotr_filename;
-
+#endif /* WIN32 */
 }
 
 
@@ -138,8 +188,8 @@ lotr_fopen(const char *path, const char *mode)
         exit(1);
     }
 
-    snprintf(lotr_filename, sizeof(lotr_filename), "%s/%s", DATA_DIRECTORY,
-             path);
+    snprintf(lotr_filename, sizeof(lotr_filename), "%s/%s",
+             lotr_data_directory(), path);
 
     result = fopen(lotr_filename, mode);
 
@@ -173,8 +223,8 @@ lotr_file_exists(const char *path)
         return 1;
     }
 
-    snprintf(lotr_filename, sizeof(lotr_filename), "%s/%s", DATA_DIRECTORY,
-             path);
+    snprintf(lotr_filename, sizeof(lotr_filename), "%s/%s",
+             lotr_data_directory(), path);
 
     testfile = fopen(lotr_filename, "rb");
     if (testfile != NULL) {
@@ -413,5 +463,36 @@ lotr_load_prop_field(xmlNodePtr node, char *name, Uint8 *value, int maxlen)
 char *
 lotr_data_directory(void)
 {
-    return DATA_DIRECTORY;
+    /*
+       Search order:
+         1. $LOTR_DATA
+         2. <folder containing the executable>/<DATA_SUBDIR>  (e.g. ./cd)
+         3. compiled-in DATA_DIRECTORY
+       The first one containing arts.dat wins; otherwise the first one
+       that is set (so error messages point somewhere sensible).
+     */
+    static char dir[1024] = "";
+
+    if (dir[0] == 0) {
+        const char *env = getenv("LOTR_DATA");
+        char local[1024];
+
+        snprintf(local, sizeof(local), "%s%s", lotr_base_path(), DATA_SUBDIR);
+
+        if (env != NULL && env[0] && lotr_dir_has_arts(env))
+            snprintf(dir, sizeof(dir), "%s", env);
+        else if (lotr_dir_has_arts(local))
+            snprintf(dir, sizeof(dir), "%s", local);
+        else if (lotr_dir_has_arts(DATA_DIRECTORY))
+            snprintf(dir, sizeof(dir), "%s", DATA_DIRECTORY);
+#ifdef WIN32
+        else
+            snprintf(dir, sizeof(dir), "%s", local);
+#else
+        else
+            snprintf(dir, sizeof(dir), "%s", DATA_DIRECTORY);
+#endif
+    }
+
+    return dir;
 }
