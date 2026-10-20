@@ -68,6 +68,7 @@ static int scanline_scale = 0;
 #define CRT_PRESCALE 3
 
 static void lotr_apply_fullscreen(int on);
+static void lotr_mouse_push(int button, int x, int y);
 
 /* CRT: brighten by this many 256ths to make up for the light the
    scanlines take away (about 1/8) */
@@ -77,6 +78,19 @@ static void lotr_apply_fullscreen(int on);
 #define KEYBOARDBUFFERESIZE 16
 static int lotr_keybufferpos = 0;
 static int lotr_keybuffer[KEYBOARDBUFFERESIZE];
+
+
+/* mouse buffer: clicks and wheel turns, in 320x200 screen coordinates */
+#define MOUSEBUFFERSIZE 8
+static int lotr_mousebufferpos = 0;
+static struct {
+    int button, x, y;
+} lotr_mousebuffer[MOUSEBUFFERSIZE];
+
+/* the cursor hides itself when the mouse has not moved for a while */
+#define CURSOR_HIDE_MS 3000
+static Uint32 lotr_mouse_moved_ticks = 0;
+static int lotr_cursor_shown = 1;
 
 
 #ifdef HAVE_LIBSDL_MIXER
@@ -438,6 +452,44 @@ lotr_poll_events(void)
 
                 break;
 
+            case SDL_MOUSEMOTION:
+                lotr_mouse_moved_ticks = SDL_GetTicks();
+                if (!lotr_cursor_shown) {
+                    SDL_ShowCursor(SDL_ENABLE);
+                    lotr_cursor_shown = 1;
+                }
+                break;
+
+            case SDL_MOUSEBUTTONDOWN:
+                lotr_mouse_moved_ticks = SDL_GetTicks();
+                if (lotr_input_disabled)
+                    break;
+                /* the renderer's logical size makes these screen pixels;
+                   clicks on the black bars around the picture are dropped */
+                if (event.button.x < 0 || event.button.y < 0
+                    || event.button.x >= SCREEN_WIDTH
+                    || event.button.y >= SCREEN_HEIGHT)
+                    break;
+                if (event.button.button == SDL_BUTTON_LEFT)
+                    lotr_mouse_push(LOTR_MOUSE_LEFT, event.button.x,
+                                    event.button.y);
+                else if (event.button.button == SDL_BUTTON_RIGHT)
+                    lotr_mouse_push(LOTR_MOUSE_RIGHT, event.button.x,
+                                    event.button.y);
+                break;
+
+            case SDL_MOUSEWHEEL:
+                if (lotr_input_disabled || event.wheel.y == 0)
+                    break;
+                {
+                    int up = event.wheel.y > 0;
+                    if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED)
+                        up = !up;
+                    lotr_mouse_push(up ? LOTR_MOUSE_WHEEL_UP
+                                    : LOTR_MOUSE_WHEEL_DOWN, 0, 0);
+                }
+                break;
+
                 /* SDL_QUIT event (window close) */
             case SDL_QUIT:
                 exit(0);
@@ -461,6 +513,7 @@ lotr_reset_keyboard(void)
     lotr_poll_events();
 
     lotr_keybufferpos = 0;
+    lotr_mousebufferpos = 0;
 
     lotr_key_left_pressed = 0;
     lotr_key_right_pressed = 0;
@@ -480,7 +533,8 @@ lotr_kb_hit(void)
 {
     lotr_poll_events();
 
-    return lotr_keybufferpos != 0;
+    /* a click counts as a key ("press any key", skipping films) */
+    return lotr_keybufferpos != 0 || lotr_mousebufferpos != 0;
 }
 
 
@@ -507,6 +561,75 @@ lotr_get_key(void)
     return key;
 
 }
+
+
+/*
+  mouse
+*/
+
+static void
+lotr_mouse_push(int button, int x, int y)
+{
+    if (lotr_mousebufferpos >= MOUSEBUFFERSIZE)
+        return;
+    lotr_mousebuffer[lotr_mousebufferpos].button = button;
+    lotr_mousebuffer[lotr_mousebufferpos].x = x;
+    lotr_mousebuffer[lotr_mousebufferpos].y = y;
+    lotr_mousebufferpos++;
+}
+
+
+int
+lotr_get_mouse(int *x, int *y)
+{
+    int button, i;
+
+    lotr_poll_events();
+
+    if (lotr_mousebufferpos == 0)
+        return 0;
+
+    button = lotr_mousebuffer[0].button;
+    *x = lotr_mousebuffer[0].x;
+    *y = lotr_mousebuffer[0].y;
+    lotr_mousebufferpos--;
+    for (i = 0; i < lotr_mousebufferpos; ++i)
+        lotr_mousebuffer[i] = lotr_mousebuffer[i + 1];
+
+    return button;
+}
+
+
+int
+lotr_mouse_held(int *x, int *y)
+{
+    int wx, wy;
+    float lx, ly;
+
+    if (lotr_input_disabled || main_window_renderer == NULL
+        || !(SDL_GetMouseState(&wx, &wy) & SDL_BUTTON_LMASK))
+        return 0;
+
+    SDL_RenderWindowToLogical(main_window_renderer, wx, wy, &lx, &ly);
+    if (lx < 0 || ly < 0 || lx >= SCREEN_WIDTH || ly >= SCREEN_HEIGHT)
+        return 0;
+    *x = (int)lx;
+    *y = (int)ly;
+    return 1;
+}
+
+
+/* hide the cursor once the mouse has been still for a while */
+static void
+lotr_update_cursor(void)
+{
+    if (lotr_cursor_shown
+        && SDL_GetTicks() - lotr_mouse_moved_ticks > CURSOR_HIDE_MS) {
+        SDL_ShowCursor(SDL_DISABLE);
+        lotr_cursor_shown = 0;
+    }
+}
+
 
 
 /*
@@ -607,7 +730,6 @@ lotr_apply_fullscreen(int on)
         return;
     SDL_SetWindowFullscreen(main_window,
                             on ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-    SDL_ShowCursor(on ? SDL_DISABLE : SDL_ENABLE);
 }
 
 
@@ -850,6 +972,8 @@ lotr_show_screen(Uint8 *newscreen)
     SDL_RenderPresent(main_window_renderer);
 
     SDL_FreeSurface(src);
+
+    lotr_update_cursor();
 }
 
 

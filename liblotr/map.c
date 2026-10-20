@@ -134,6 +134,17 @@ CommandSpot *map_pythonspots[MAX_PYTHON_SPOTS];
 Uint8 map_registers[16];
 Uint8 map_objects[128 - 16];
 
+/* screen position of the map area at the last map_display(), for clicks */
+static int map_view_left = 0, map_view_top = 0;
+
+/* explored large tiles of every map, one bit each, kept in save games */
+static Uint8 map_explored[MAP_EXPLORED_MAPS][MAP_EXPLORED_SIZE];
+
+/* average colour of each tile for the overview map; valid until the
+   tiles change */
+static int tile_rgb[TILENUM][3];
+static int tile_rgb_valid = 0;
+
 
 #define DAY_FADE 100
 #if PIXELPRECISE
@@ -339,6 +350,8 @@ map_set_tiles(Archive *archive, int basictileindex,
     Uint8 *data;
     int size;
     int i, k, l;
+
+    tile_rgb_valid = 0;
 
     data = decompress_ndxarchive(archive, basictileindex, &size);
     if (size != BASICTILENUM * TILESIZE * TILESIZE) {
@@ -659,6 +672,179 @@ map_set_spots(Archive *archive, int index)
 
 
 /*
+  explored parts of the maps
+*/
+
+void
+map_explored_clear(void)
+{
+    memset(map_explored, 0, sizeof(map_explored));
+}
+
+
+Uint8 *
+map_explored_data(int map)
+{
+    if (map < 0 || map >= MAP_EXPLORED_MAPS)
+        return NULL;
+    return map_explored[map];
+}
+
+
+int
+map_is_explored(int map, int x, int y)
+{
+    int bit = y * MAP_WIDTH + x;
+
+    if (map < 0 || map >= MAP_EXPLORED_MAPS || x < 0 || y < 0
+        || x >= MAP_WIDTH || y >= MAP_HEIGHT)
+        return 0;
+    return (map_explored[map][bit / 8] >> (bit % 8)) & 1;
+}
+
+
+/* marks large tiles [startx, endx) x [starty, endy) of this map */
+static void
+map_explore(int startx, int starty, int endx, int endy)
+{
+    int x, y, bit;
+
+    if (map_id < 0 || map_id >= MAP_EXPLORED_MAPS)
+        return;
+    for (y = starty < 0 ? 0 : starty; y < endy && y < MAP_HEIGHT; ++y)
+        for (x = startx < 0 ? 0 : startx; x < endx && x < MAP_WIDTH; ++x) {
+            bit = y * MAP_WIDTH + x;
+            map_explored[map_id][bit / 8] |= 1 << (bit % 8);
+        }
+}
+
+
+/*
+  map pixel under screen pixel sx, sy as last displayed; 0 if it is not
+  over the map
+*/
+
+int
+map_screen_to_map(int sx, int sy, int *mx, int *my)
+{
+    if (sx < map_view_left || sy < map_view_top
+        || sx >= map_view_left + map_width || sy >= map_view_top + map_height)
+        return 0;
+    *mx = map_last_x - (map_width + 1) / 2 + (sx - map_view_left);
+    *my = map_last_y - (map_height + 1) / 2 + (sy - map_view_top);
+    return 1;
+}
+
+
+/* RGB (0-63) of map colour c, as in the map palette before any fading */
+static const Uint8 *
+map_color(int c)
+{
+    extern Uint8 main_palette[0x300];
+
+    if (map_palette != NULL && c < 0x40)
+        return map_palette->colors + 3 * c;
+    return main_palette + 3 * c;
+}
+
+
+static void
+map_compute_tile_rgb(void)
+{
+    int t, i, j, p;
+    const Uint8 *rgb;
+    const Uint8 *pix;
+
+    for (t = 0; t < TILENUM; ++t) {
+        tile_rgb[t][0] = tile_rgb[t][1] = tile_rgb[t][2] = 0;
+        for (j = 0; j < 4; ++j)
+            for (i = 0; i < 4; ++i) {
+                pix = basictiles[tiles[t][i][j] % BASICTILENUM]->data;
+                for (p = 0; p < TILESIZE * TILESIZE; ++p) {
+                    rgb = map_color(pix[p]);
+                    tile_rgb[t][0] += rgb[0];
+                    tile_rgb[t][1] += rgb[1];
+                    tile_rgb[t][2] += rgb[2];
+                }
+            }
+        for (p = 0; p < 3; ++p)
+            tile_rgb[t][p] /= 16 * TILESIZE * TILESIZE;
+    }
+    tile_rgb_valid = 1;
+}
+
+
+/* map colour (0x00-0x3f) closest to r, g, b */
+static int
+map_nearest_color(int r, int g, int b)
+{
+    int c, best = 0, bestd = 1 << 30, d;
+    const Uint8 *rgb;
+
+    for (c = 0; c < 0x40; ++c) {
+        rgb = map_color(c);
+        d = (rgb[0] - r) * (rgb[0] - r) * 3 + (rgb[1] - g) * (rgb[1] - g) * 4
+            + (rgb[2] - b) * (rgb[2] - b) * 2;
+        if (d < bestd) {
+            bestd = d;
+            best = c;
+        }
+    }
+    return best;
+}
+
+
+/*
+  the whole current map shrunk to w x h pixels of map colours: each pixel
+  is the average of the tiles it covers; large tiles not yet explored are
+  drawn in colour unexplored
+*/
+
+void
+map_render_overview(Uint8 *out, int w, int h, int unexplored)
+{
+    int grid = MAP_WIDTH * 4;   /* tiles across the map */
+    int ox, oy, tx, ty, tx0, tx1, ty0, ty1, n;
+    int r, g, b, t;
+
+    if (!tile_rgb_valid)
+        map_compute_tile_rgb();
+
+    for (oy = 0; oy < h; ++oy) {
+        ty0 = oy * grid / h;
+        ty1 = (oy + 1) * grid / h;
+        if (ty1 <= ty0)
+            ty1 = ty0 + 1;
+        for (ox = 0; ox < w; ++ox) {
+            tx0 = ox * grid / w;
+            tx1 = (ox + 1) * grid / w;
+            if (tx1 <= tx0)
+                tx1 = tx0 + 1;
+
+            if (!map_is_explored(map_id, (tx0 + tx1) / 2 / 4,
+                                 (ty0 + ty1) / 2 / 4)) {
+                out[oy * w + ox] = unexplored;
+                continue;
+            }
+
+            r = g = b = n = 0;
+            for (ty = ty0; ty < ty1; ++ty)
+                for (tx = tx0; tx < tx1; ++tx) {
+                    t = largetiles[map_desc[tx / 4][ty / 4] % LARGETILENUM]
+                        [tx % 4][ty % 4] % TILENUM;
+                    r += tile_rgb[t][0];
+                    g += tile_rgb[t][1];
+                    b += tile_rgb[t][2];
+                    ++n;
+                }
+            out[oy * w + ox] = map_nearest_color(r / n, g / n, b / n);
+        }
+    }
+}
+
+
+
+/*
   draws tile
  */
 
@@ -776,6 +962,11 @@ map_display(int x, int y)
 
 
     gui_set_map_area(&map_width, &map_height);
+    {
+        extern int window_x, window_y;
+        map_view_left = window_x;
+        map_view_top = window_y;
+    }
 
 
     if (combat_get_mode()) {
@@ -830,6 +1021,12 @@ map_display(int x, int y)
         endy = BUILDING_HEIGHT;
 #endif
 
+
+    /* everything on screen counts as explored */
+#ifdef TTT
+    if (building_id == -1)
+#endif
+        map_explore(startx, starty, endx, endy);
 
     /*
        draw map

@@ -47,7 +47,18 @@ at a data folder.
 - **Input:** every SDL event is handled in `lotr_poll_events()` in
   `liblotr/lotr_sdl2.c`. The rest of the engine only sees the contract in
   `lotr_sdl.h`: `lotr_get_key()`, `lotr_kb_hit()`, `lotr_key_left/right/up/
-  down/esc/shift/ctrl()`. New input (mouse) should synthesise into these.
+  down/esc/shift/ctrl()`, plus `lotr_get_mouse()` / `lotr_mouse_held()`
+  (clicks in 320x200 screen pixels: the renderer's logical size converts
+  them; `SCREEN_FACT` is 1). The backend never calls into the GUI.
+- **Mouse:** `gui_frame()` turns clicks into keys via a click map:
+  `draw_scroll()` registers its area and hotspots found in its text
+  (`gui_hotspot_key()`: "L.", "1.*", "eXit", "Question", "(Y/N)",
+  "< >", "UP DOWN", "PgUp PgDn", "Tab."), `main_menu_draw()` its ten
+  buttons and portrait, settings/save lists their rows. `gui_clear()`
+  empties it. Clicks on the map go to `game_walk_to()`: a BFS over
+  `map_can_move_to()` cells, walked by feeding `game_leader_movement()`
+  the same direction wishes as the arrow keys (so spots fire). Keys, a
+  dialog, a map change or being moved stop it.
 - `liblotr/lotr_sdl.c` is the **dead SDL1 backend**. Don't edit or copy from it.
 - **Keys / dialogs:** `gui_frame()` in `gui.c` dispatches on literal chars
   (space, a c g h l m o q s t u v). Options menu: s save, l load, m music,
@@ -85,6 +96,14 @@ at a data folder.
   nodes "text"). Viewer: `dialog_journal_*` in gui.c, key J.
   NPC talk tables are filled by map scripts as you play, so a harness
   needs a loaded save or must set `character->texts` itself.
+- **Map overview:** `map_display()` marks every large tile on screen as
+  explored (`map_explored`, 64x64 bits per map, saved as `<explored>`;
+  older saves start empty). `map_render_overview()` shrinks the current
+  map to w x h map colours from cached per-tile averages of the unfaded
+  `map_palette`; `dialog_map_*` in gui.c shows it on Tab with a blinking
+  marker in interface colours (0x40+), which night does not fade.
+  Positions: character x/y are half map pixels; tiles are 32 px, large
+  tiles 128 px.
 - **Settings:** `lotr_setting_get/set()` in `utils.c` read and rewrite
   `settings.txt` ("key = value", other lines kept): next to the exe on
   Windows, `~/.lotr` elsewhere. Keys: `display`, `fullscreen` (F11 too),
@@ -107,4 +126,5 @@ at a data folder.
 - Small, focused commits with descriptive bodies; push `play` to `origin`.
 - Update `scripts/README-windows.txt` (player-facing, CRLF line endings) when
   controls or setup change.
-- See `ROADMAP.md` for what's planned and `docs/MOUSE_INPUT_PLAN.md` for mouse.
+- See `ROADMAP.md` for what's planned. `docs/MOUSE_INPUT_PLAN.md` is the
+original mouse plan (now implemented; see Mouse above).

@@ -51,6 +51,12 @@ extern int game_load(int n);
    return 1 if valid, 0 if the slot is empty, -1 if it can not be read */
 extern int game_save_info(int n, int *map, int *leader_id, time_t *mtime);
 
+/* walk the party to the map spot under screen pixel x, y (mouse) */
+extern void game_walk_to(int x, int y);
+
+/* stop walking to a clicked spot */
+extern void game_walk_cancel(void);
+
 /* is the game in a state that can be saved (no script, combat) */
 extern int game_can_save(void);
 

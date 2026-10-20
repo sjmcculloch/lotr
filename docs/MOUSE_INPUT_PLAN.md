@@ -1,3 +1,10 @@
+> **Status (Oct 2026): implemented** on `play` (tiers 1 and 2; the OS
+> cursor is used, hidden after 3 s still). Differences from this plan:
+> mouse events are queued by the backend (`lotr_get_mouse()`) and turned
+> into keys in `gui_frame()`, so the backend never calls the GUI; the
+> click map is emptied by `gui_clear()`, not per frame; click-to-move went
+> straight to a breadth-first search (uniform step cost). See CLAUDE.md.
+
 > **Note (Oct 2026):** written against `main` before the `play` branch work.
 > Line numbers have drifted; re-check them. `SCREEN_FACT` is 4 only with libhqx
 > (otherwise 1), so the 1280x800 logical-size warning applies to hqx builds only.

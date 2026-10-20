@@ -230,6 +230,7 @@ game_load_map(int map)
 
     if (game_map_id >= 0 && map != game_map_id)
         game_autosave_pending = 1;
+    game_walk_cancel();
 
 #ifdef TTT
     map_exit_building();
@@ -375,6 +376,7 @@ game_new(void)
     game_tmp_leader = NULL;
 
     journal_clear();
+    map_explored_clear();
 
     game_autosave_pending = 0;
 }
@@ -707,6 +709,23 @@ game_save(int n)
     xmlAddChild(root, node);
     journal_save(node);
 
+    /* explored parts of each map that has any */
+    node = xmlNewNode(NULL, (const xmlChar *)"explored");
+    xmlAddChild(root, node);
+    for (i = 0; i < MAP_EXPLORED_MAPS; ++i) {
+        Uint8 *bits = map_explored_data(i);
+        int k;
+
+        for (k = 0; k < MAP_EXPLORED_SIZE && !bits[k]; ++k)
+            ;
+        if (k == MAP_EXPLORED_SIZE)
+            continue;
+        subnode = xmlNewNode(NULL, (const xmlChar *)"map");
+        lotr_save_prop_int(subnode, "map_num", i);
+        lotr_save_prop_field(subnode, "bits", bits, MAP_EXPLORED_SIZE);
+        xmlAddChild(node, subnode);
+    }
+
     node = xmlNewNode(NULL, (const xmlChar *)"saved_position");
     xmlAddChild(root, node);
 
@@ -836,6 +855,17 @@ game_load(int n)
 
     journal_load(lotr_get_subnode(root, (const xmlChar *)"journal", 0));
 
+    /* explored parts; older saves have none */
+    map_explored_clear();
+    node = lotr_get_subnode(root, (const xmlChar *)"explored", 0);
+    for (subnode = node ? xmlFirstElementChild(node) : NULL; subnode;
+         subnode = xmlNextElementSibling(subnode)) {
+        Uint8 *bits = map_explored_data(
+            lotr_load_prop_int_default(subnode, "map_num", -1));
+        if (bits && lotr_get_subnode(subnode, (const xmlChar *)"bits", 0))
+            lotr_load_prop_field(subnode, "bits", bits, MAP_EXPLORED_SIZE);
+    }
+
     xmlFreeDoc(doc);
 
     game_autosave_pending = 0;
@@ -905,6 +935,212 @@ game_convert(int game_id)
 
 
 /*
+  walking to a clicked spot
+
+  A click on the map sets a goal; a breadth first search over the
+  terrain cells around the party (map_can_move_to(), the same test the
+  arrow keys use) finds the way, and game_leader_movement() then takes it
+  one step at a time exactly as if the arrow keys were pressed, so map
+  scripts fire as usual. If the goal can not be reached the party walks as
+  close as it can. Keys, a dialog, a script or anything that moves the
+  party stops the walk; holding the button down keeps following the
+  pointer.
+*/
+
+#define WALK_MARGIN 12          /* cells searched beyond start and goal */
+#define WALK_MAX_SIDE 160
+#define WALK_MAX_PATH (WALK_MAX_SIDE * WALK_MAX_SIDE)
+
+static int walk_active = 0;
+static int walk_follow = 0;     /* the button is still held */
+static int walk_goal_x, walk_goal_y;
+static int walk_path[WALK_MAX_PATH];    /* directions */
+static int walk_path_len, walk_path_pos;
+static int walk_x, walk_y;      /* cell the party should be on */
+
+
+void
+game_walk_cancel(void)
+{
+    walk_active = 0;
+    walk_follow = 0;
+}
+
+
+/* path from the party to the goal, or as near it as possible */
+static int
+game_walk_plan(void)
+{
+    static int prev[WALK_MAX_PATH];     /* index of the cell we came from */
+    static int queue[WALK_MAX_PATH];
+    int sx = leader->x / 4, sy = leader->y / 4;
+    int x0, y0, x1, y1, w, h;
+    int head = 0, tail = 0, best, bestd, d, i, c, n, x, y, dir;
+    static const int dx[4] = { -1, 1, 0, 0 };
+    static const int dy[4] = { 0, 0, -1, 1 };
+    static const int dirs[4] = { CHARACTER_LEFT, CHARACTER_RIGHT,
+        CHARACTER_UP, CHARACTER_DOWN
+    };
+
+    x0 = (sx < walk_goal_x ? sx : walk_goal_x) - WALK_MARGIN;
+    y0 = (sy < walk_goal_y ? sy : walk_goal_y) - WALK_MARGIN;
+    x1 = (sx > walk_goal_x ? sx : walk_goal_x) + WALK_MARGIN;
+    y1 = (sy > walk_goal_y ? sy : walk_goal_y) + WALK_MARGIN;
+    if (x0 < 0)
+        x0 = 0;
+    if (y0 < 0)
+        y0 = 0;
+    w = x1 - x0 + 1;
+    h = y1 - y0 + 1;
+    if (w > WALK_MAX_SIDE || h > WALK_MAX_SIDE)
+        return 0;
+
+    for (i = 0; i < w * h; ++i)
+        prev[i] = -2;           /* not reached */
+
+    c = (sy - y0) * w + (sx - x0);
+    prev[c] = -1;
+    queue[tail++] = c;
+    best = c;
+    bestd = abs(sx - walk_goal_x) + abs(sy - walk_goal_y);
+
+    while (head < tail && bestd > 0) {
+        c = queue[head++];
+        for (i = 0; i < 4; ++i) {
+            x = c % w + dx[i];
+            y = c / w + dy[i];
+            if (x < 0 || y < 0 || x >= w || y >= h)
+                continue;
+            n = y * w + x;
+            if (prev[n] != -2
+                || !map_can_move_to(leader, x0 + x, y0 + y))
+                continue;
+            prev[n] = c;
+            queue[tail++] = n;
+            d = abs(x0 + x - walk_goal_x) + abs(y0 + y - walk_goal_y);
+            if (d < bestd) {
+                bestd = d;
+                best = n;
+            }
+        }
+    }
+
+    /* walk back from the best cell, then reverse */
+    walk_path_len = 0;
+    for (c = best; prev[c] >= 0; c = prev[c]) {
+        n = prev[c];
+        for (dir = 0; dir < 4; ++dir)
+            if (n % w + dx[dir] == c % w && n / w + dy[dir] == c / w)
+                break;
+        walk_path[walk_path_len++] = dirs[dir];
+    }
+    for (i = 0; i < walk_path_len / 2; ++i) {
+        d = walk_path[i];
+        walk_path[i] = walk_path[walk_path_len - 1 - i];
+        walk_path[walk_path_len - 1 - i] = d;
+    }
+
+    walk_path_pos = 0;
+    walk_x = sx;
+    walk_y = sy;
+    return walk_path_len > 0;
+}
+
+
+/* screen pixel sx, sy -> goal cell of the party's feet */
+static int
+game_walk_goal(int sx, int sy, int *gx, int *gy)
+{
+    int mx, my;
+
+    if (!map_screen_to_map(sx, sy, &mx, &my))
+        return 0;
+    /* the feet are cells x..x+2 of row y+1, centred 12 map pixels in */
+    *gx = (mx - 12) / 8;
+    *gy = (my - 12) / 8;
+    return *gx >= 0 && *gy >= 0;
+}
+
+
+void
+game_walk_to(int sx, int sy)
+{
+    if (leader == NULL || combat_get_mode()
+        || !game_walk_goal(sx, sy, &walk_goal_x, &walk_goal_y))
+        return;
+    walk_active = 1;
+    walk_follow = 1;
+    walk_path_len = walk_path_pos = 0;  /* planned at the next step */
+}
+
+
+/*
+  next step of a walk: sets one of the direction wishes; called when the
+  party stands still
+*/
+
+static void
+game_walk_step(int *left, int *right, int *up, int *down)
+{
+    int sx, sy, gx, gy, dir, nx, ny;
+
+    /* holding the button: follow the pointer */
+    if (walk_follow) {
+        if (lotr_mouse_held(&sx, &sy)) {
+            if (game_walk_goal(sx, sy, &gx, &gy)
+                && (gx != walk_goal_x || gy != walk_goal_y)) {
+                walk_goal_x = gx;
+                walk_goal_y = gy;
+                walk_path_len = walk_path_pos = 0;
+            }
+        } else {
+            walk_follow = 0;
+        }
+    }
+
+    /* moved by something else (a script, a teleport): stop */
+    if (walk_path_len > 0
+        && (leader->x / 4 != walk_x || leader->y / 4 != walk_y)) {
+        game_walk_cancel();
+        return;
+    }
+
+    if (walk_path_pos >= walk_path_len && !game_walk_plan()) {
+        if (!walk_follow)
+            game_walk_cancel();
+        return;
+    }
+
+    dir = walk_path[walk_path_pos];
+    nx = walk_x + (dir == CHARACTER_LEFT ? -1 : dir == CHARACTER_RIGHT);
+    ny = walk_y + (dir == CHARACTER_UP ? -1 : dir == CHARACTER_DOWN);
+
+    /* someone stepped in the way: find another way, once */
+    if (!map_can_move_to(leader, nx, ny)) {
+        if (!game_walk_plan() || walk_path_len == 0) {
+            game_walk_cancel();
+            return;
+        }
+        dir = walk_path[0];
+        nx = walk_x + (dir == CHARACTER_LEFT ? -1 : dir == CHARACTER_RIGHT);
+        ny = walk_y + (dir == CHARACTER_UP ? -1 : dir == CHARACTER_DOWN);
+    }
+
+    *left = dir == CHARACTER_LEFT;
+    *right = dir == CHARACTER_RIGHT;
+    *up = dir == CHARACTER_UP;
+    *down = dir == CHARACTER_DOWN;
+
+    walk_path_pos++;
+    walk_x = nx;
+    walk_y = ny;
+    if (walk_path_pos >= walk_path_len && !walk_follow)
+        walk_active = 0;        /* this is the last step */
+}
+
+
+
+/*
   parse keyboard movement input
 */
 
@@ -915,6 +1151,7 @@ game_leader_movement(void)
 
     int w, h;
     CommandSpot *spot;
+    int left, right, up, down;
 
     if (leader == NULL || leader->action != CHARACTER_STAY)
         return;
@@ -976,19 +1213,29 @@ game_leader_movement(void)
 
         }
 
-        if (lotr_key_left()
+        /* arrow keys, or the next step of a walk to a clicked spot */
+        left = lotr_key_left();
+        right = lotr_key_right();
+        up = lotr_key_up();
+        down = lotr_key_down();
+        if (left || right || up || down)
+            game_walk_cancel();
+        else if (walk_active && !game_spot_running)
+            game_walk_step(&left, &right, &up, &down);
+
+        if (left
             && map_can_move_to(leader, leader->x / 4 - 1, leader->y / 4))
             character_move_left(leader);
 
-        if (lotr_key_right()
+        if (right
             && map_can_move_to(leader, leader->x / 4 + 1, leader->y / 4))
             character_move_right(leader);
 
-        if (lotr_key_up()
+        if (up
             && map_can_move_to(leader, leader->x / 4, leader->y / 4 - 1))
             character_move_up(leader);
 
-        if (lotr_key_down()
+        if (down
             && map_can_move_to(leader, leader->x / 4, leader->y / 4 + 1))
             character_move_down(leader);
 
@@ -1135,8 +1382,10 @@ game_next_frame(void)
     if (combat_frame())
         goto end_next_frame;
 
-    if (gui_frame())
+    if (gui_frame()) {
+        game_walk_cancel();
         goto end_next_frame;
+    }
 
     if (game_actual_spot == NULL)
         game_spot_running = 0;
