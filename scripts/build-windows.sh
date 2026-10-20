@@ -36,7 +36,12 @@ if [ ! -f "$P/lib/libxml2.a" ]; then
   cmake --build libxml2/build -j8 --target install
 fi
 
-# Build out of a clean copy so a native in-tree build doesn't interfere
+# Build out of a clean copy so a native in-tree build doesn't interfere.
+# The copy is a git clone: only committed changes get built.
+if [ -n "$(git -C "$SRC" status --porcelain --untracked-files=no)" ]; then
+  echo "WARNING: uncommitted changes in $SRC are NOT in this build:" >&2
+  git -C "$SRC" status --short --untracked-files=no >&2
+fi
 rm -rf "$W/src" && git -C "$SRC" worktree prune && git clone -q "$SRC" "$W/src"
 cd "$W/src"
 autoreconf -fi

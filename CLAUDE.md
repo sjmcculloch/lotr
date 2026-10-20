@@ -16,7 +16,9 @@ Two builds; both must stay at **zero errors and zero warnings**.
   libsdl2-mixer-dev libxml2-dev
 - Windows (what Scott plays): `sh scripts/build-windows.sh`
   Cross-compiles with mingw-w64 and assembles `build-win/pkg/LOTR/`
-  (lotr.exe, SDL2.dll, SDL2_mixer.dll, README.txt, tools/). Extra needs:
+  (lotr.exe, SDL2.dll, SDL2_mixer.dll, README.txt, tools/). It builds a
+  `git clone` of the repo, so **commit before building** or the exe won't
+  have your changes (it warns). Extra needs:
   gcc-mingw-w64-x86-64 cmake curl git.
 
 Scott runs Claude Code in WSL (Ubuntu). His install is `C:\games\lotr`
