@@ -85,6 +85,14 @@ at a data folder.
   nodes "text"). Viewer: `dialog_journal_*` in gui.c, key J.
   NPC talk tables are filled by map scripts as you play, so a harness
   needs a loaded save or must set `character->texts` itself.
+- **Map overview:** `map_display()` marks every large tile on screen as
+  explored (`map_explored`, 64x64 bits per map, saved as `<explored>`;
+  older saves start empty). `map_render_overview()` shrinks the current
+  map to w x h map colours from cached per-tile averages of the unfaded
+  `map_palette`; `dialog_map_*` in gui.c shows it on Tab with a blinking
+  marker in interface colours (0x40+), which night does not fade.
+  Positions: character x/y are half map pixels; tiles are 32 px, large
+  tiles 128 px.
 - **Settings:** `lotr_setting_get/set()` in `utils.c` read and rewrite
   `settings.txt` ("key = value", other lines kept): next to the exe on
   Windows, `~/.lotr` elsewhere. Keys: `display`, `fullscreen` (F11 too),
