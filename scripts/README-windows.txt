@@ -72,7 +72,13 @@ saved before this version start with an empty one.
 SETTINGS
 --------
 Options (O), then C (Configure) opens the settings: music on/off, music
-volume, effects volume, display filter and fullscreen. Up/Down picks a
+volume, effects volume, display filter, fullscreen, pixel shape and
+widescreen.
+  Pixel shape  "4:3 (original)" shows each pixel 1.2 times taller than
+               wide, as the game looked on a 1990 monitor; "Square" is
+               the shape this build used before.
+  Widescreen   shows more of the map to the left and right so the
+               picture fills a wide monitor; the menu bar is centred. Up/Down picks a
 line, Left/Right (or Enter) changes it; changes apply at once. They are
 kept in settings.txt next to lotr.exe, as are F10, F11 and the Options
 menu's M (music) key. The music volume set here overrides the "volume"
@@ -138,6 +144,7 @@ Changes in this build:
   - mouse: menus, dialogs and the main menu; click on the map to walk
   - CD music cues, fight and victory music as in the original CD
     edition; the right sound effects for hits, misses and "cry"
+  - original 4:3 pixel shape and widescreen, in the settings
   - diagnostics written to lotr.log next to lotr.exe
   - plays the CD soundtrack (ripped from the disc) as background music,
     pausing for films and resuming where it left off

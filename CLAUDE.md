@@ -79,6 +79,17 @@ at a data folder.
   "magical": scrambled P/B f_codes and frame-rate code; `mpg.c` recovers the
   f_code (TSN 3/8 method from DOSBox Staging). `pl_mpeg.h` is vendored and
   patched in four places marked `LOTR patch`. Keep them if you update it.
+- **Screen size:** `screen_width` (graphics.c) is 320, or wider with
+  widescreen: `lotr_screen_width_wanted()` from the desktop's shape,
+  multiple of 8, max 864 (32:9 with 4:3 pixels; Scott's monitor is
+  5120x1440); `graphics_apply_screen_mode()` reallocates.
+  The engine's large-screen path draws the map full height with the menu
+  bar (centred) over it. Cartoons and .av frames are centred. With the
+  4:3 pixel shape the backend's logical size is w x 240 (no integer
+  scale; sharp mode prescales by whole numbers, then linear) and mouse y
+  is mapped back to 200 rows. Settings: `aspect` (4:3|square),
+  `widescreen` (on|off). Use `screen_width`, not `SCREEN_WIDTH`, for
+  layout.
 - **Display filters:** `lotr_show_screen()` in `lotr_sdl2.c` presents the
   frame as sharp (default), smooth (hq4x, then linear) or CRT (3x nearest,
   linear, scanline overlay sized to the integer window scale). F10 cycles,
