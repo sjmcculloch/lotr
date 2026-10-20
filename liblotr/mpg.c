@@ -24,6 +24,7 @@
 #include "lotr_sdl.h"
 #include "midi.h"
 #include "mpg.h"
+#include "cdmusic.h"
 #include "utils.h"
 
 #include <SDL.h>
@@ -329,8 +330,12 @@ mpg_play(const char *name)
     /* smooth scaling for film footage, unlike the sharp game pixels */
     SDL_SetTextureScaleMode(st.texture, SDL_ScaleModeLinear);
 
-    /* game music would play over the film */
+    /* game music would play over the film; CD music resumes after */
+#ifdef CD_VERSION
+    cdmusic_pause();
+#else
     stop_midi();
+#endif
 
     if (plm_get_num_audio_streams(plm) > 0) {
         SDL_AudioSpec want, have;
@@ -429,6 +434,9 @@ mpg_play(const char *name)
     SDL_RenderClear(renderer);
     SDL_RenderPresent(renderer);
 
+#ifdef CD_VERSION
+    cdmusic_resume();
+#endif
     lotr_reset_keyboard();
 
     return 1;

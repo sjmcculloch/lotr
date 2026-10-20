@@ -12,6 +12,20 @@ SETUP
    arts.dat must sit directly inside "cd".
 2. Double-click lotr.exe.
 
+MUSIC (CD editions)
+-------------------
+The CD editions' music is CD audio, which has to be ripped from the
+disc image. Put tools\extract-music.ps1 next to your .bin and .cue
+(e.g. in the folder that also holds "cd") and run, in that folder:
+    powershell -ExecutionPolicy Bypass -File .\extract-music.ps1
+It writes track02.wav ... into cd\music plus a music.txt you can edit:
+the background playlist, the volume, and which tracks to play for the
+game's music cues. Each cue the game fires is noted in lotr.log.
+The Options screen's music setting switches it on and off.
+
+If you have a .bin/.cue disc image, tools\extract-data-track.ps1 turns
+its data track into an .iso that Windows and 7-Zip can open.
+
 If the files are in the wrong place, a message box says exactly
 which folder it looked in. You can also point it somewhere else by
 setting a LOTR_DATA environment variable to the folder holding arts.dat.
@@ -43,6 +57,9 @@ Changes in this build:
   - sharp, whole-number pixel scaling; window sized to your screen
   - fullscreen toggle
   - missing-data error shown as a dialog
+  - diagnostics written to lotr.log next to lotr.exe
+  - plays the CD soundtrack (ripped from the disc) as background music,
+    pausing for films and resuming where it left off
   - plays the ReelMagic edition's MPEG-1 film cutscenes in full colour
     with full-quality sound (decoder: pl_mpeg, MIT licence); a missing
     cutscene is skipped instead of quitting the game

@@ -37,6 +37,7 @@
 
 #ifdef CD_VERSION
 #include "sounds_cd.h"
+#include "cdmusic.h"
 #else
 #define SOUNDS_NUM 25
 #endif
@@ -137,6 +138,9 @@ sound_close(void)
     int i;
 
     stop_midi();
+#ifdef CD_VERSION
+    cdmusic_stop();
+#endif
     for (i = 0; i < SOUNDS_NUM; ++i)
         if (sound_data[i])
             free(sound_data[i]);
@@ -159,6 +163,8 @@ sound_play(int index)
 #else
     if (index > 11)
         play_sample(sound_data[index - 11], sound_sizes[index - 11]);
+    else
+        cdmusic_cue(index);     /* the original played a CD track here */
 #endif
 
 }
@@ -172,7 +178,11 @@ sound_play(int index)
 void
 play_music(void)
 {
+#ifdef CD_VERSION
+    cdmusic_start();
+#else
     play_midi(music_data, music_size, TRUE);
+#endif
 }
 
 
@@ -183,8 +193,12 @@ play_music(void)
 void
 toggle_music(void)
 {
+#ifdef CD_VERSION
+    cdmusic_toggle();
+#else
     if (!stop_midi())
         play_music();
+#endif
 }
 
 
@@ -228,6 +242,8 @@ music_combat_started(void)
 {
 #ifndef CD_VERSION
     play_midi(sound_data[21], sound_sizes[21], 0);
+#else
+    cdmusic_combat(0);
 #endif
 }
 
@@ -241,5 +257,7 @@ music_combat_won(void)
 {
 #ifndef CD_VERSION
     play_midi(sound_data[22], sound_sizes[22], 0);
+#else
+    cdmusic_combat(1);
 #endif
 }

@@ -29,6 +29,7 @@
 #include "lotr.h"
 #include "lotr_sdl.h"
 #include "midi.h"
+#include "cdmusic.h"
 #ifdef HAVE_LIBHQX
 #include "hqx.h"
 #endif
@@ -300,6 +301,8 @@ void
 lotr_poll_events(void)
 {
     SDL_Event event;
+
+    cdmusic_update();           /* next CD music track when one ends */
 
     while (SDL_PollEvent(&event)) {
         switch (event.type) {

@@ -6,6 +6,8 @@ liblotr_la_SOURCES = \
 	archive.h \
 	av.c \
 	av.h \
+	cdmusic.c \
+	cdmusic.h \
 	mpg.c \
 	mpg.h \
 	pl_mpeg.h \
