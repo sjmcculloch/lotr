@@ -72,3 +72,4 @@ tools/dendx
 tools/ndxdec
 tools/ndxenc
 tags
+/build-win/
