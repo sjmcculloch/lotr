@@ -33,6 +33,22 @@ setting a LOTR_DATA environment variable to the folder holding arts.dat.
 Saved games go in the "saves" folder next to lotr.exe, created
 automatically.
 
+MOUSE
+-----
+  Left click on the map    walk there (around obstacles); hold the
+                           button to keep following the pointer
+  Right click on the map   main menu
+  Left click in a menu     the line or button clicked, e.g. a slot,
+                           "eXit", "(Y/N)", the < > arrows
+  Right click in a menu    back / exit
+  Click while reading      go on to the next page
+  Wheel                    scroll lists, the journal and settings
+  Main menu pictures       top: Attack, View, Get, Use, Skill;
+                           bottom: Magic, Talk, Leader, Options, Exit;
+                           the portrait chooses a character
+The keyboard works as before. A key, or a dialog opening, stops a walk.
+The pointer hides after a few seconds without moving.
+
 MAP
 ---
 Tab shows the whole map of the region you are in, shrunk to fit the
@@ -116,6 +132,7 @@ Changes in this build:
   - journal (J) of paragraphs, conversations and story messages, kept
     in each saved game
   - map of the explored area (Tab), kept in each saved game
+  - mouse: menus, dialogs and the main menu; click on the map to walk
   - diagnostics written to lotr.log next to lotr.exe
   - plays the CD soundtrack (ripped from the disc) as background music,
     pausing for films and resuming where it left off

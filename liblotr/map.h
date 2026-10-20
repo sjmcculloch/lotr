@@ -265,6 +265,9 @@ extern CommandSpot *map_get_pythonspot(int id);
 
 
 
+/* map pixel under a screen pixel of the last map_display(); 0 if none */
+extern int map_screen_to_map(int sx, int sy, int *mx, int *my);
+
 /* explored parts of the maps (kept in save games) */
 extern void map_explored_clear(void);
 extern Uint8 *map_explored_data(int map);      /* MAP_EXPLORED_SIZE bytes */

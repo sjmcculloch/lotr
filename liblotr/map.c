@@ -134,6 +134,9 @@ CommandSpot *map_pythonspots[MAX_PYTHON_SPOTS];
 Uint8 map_registers[16];
 Uint8 map_objects[128 - 16];
 
+/* screen position of the map area at the last map_display(), for clicks */
+static int map_view_left = 0, map_view_top = 0;
+
 /* explored large tiles of every map, one bit each, kept in save games */
 static Uint8 map_explored[MAP_EXPLORED_MAPS][MAP_EXPLORED_SIZE];
 
@@ -716,6 +719,23 @@ map_explore(int startx, int starty, int endx, int endy)
 }
 
 
+/*
+  map pixel under screen pixel sx, sy as last displayed; 0 if it is not
+  over the map
+*/
+
+int
+map_screen_to_map(int sx, int sy, int *mx, int *my)
+{
+    if (sx < map_view_left || sy < map_view_top
+        || sx >= map_view_left + map_width || sy >= map_view_top + map_height)
+        return 0;
+    *mx = map_last_x - (map_width + 1) / 2 + (sx - map_view_left);
+    *my = map_last_y - (map_height + 1) / 2 + (sy - map_view_top);
+    return 1;
+}
+
+
 /* RGB (0-63) of map colour c, as in the map palette before any fading */
 static const Uint8 *
 map_color(int c)
@@ -942,6 +962,11 @@ map_display(int x, int y)
 
 
     gui_set_map_area(&map_width, &map_height);
+    {
+        extern int window_x, window_y;
+        map_view_left = window_x;
+        map_view_top = window_y;
+    }
 
 
     if (combat_get_mode()) {

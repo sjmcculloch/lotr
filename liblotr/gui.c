@@ -41,6 +41,7 @@
 #include "sound.h"
 #include "timing.h"
 #include "utils.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -285,6 +286,194 @@ gui_set_palette(void)
 
 
 /*
+  mouse: clickable areas of what is on screen
+
+  Every scroll, and the main menu, registers its area and the key each of
+  its hotspots stands for ("L. Load Game" -> 'l', "eXit" -> 'x', ...). A
+  click is turned into that key, so every dialog works with the mouse
+  without knowing about it. The list is emptied whenever the screen is
+  redrawn from scratch (gui_clear); the most recently drawn area wins.
+*/
+
+#define CLICKMAP_MAX 128
+
+typedef struct {
+    int x, y, w, h;
+    int key;                    /* 0: covers what is below, no key */
+} ClickRegion;
+
+static ClickRegion clickmap[CLICKMAP_MAX];
+static int clickmap_num = 0;
+
+/* graphics.c */
+extern int window_x, window_y;
+
+/* first text character of the last scroll drawn, and its width */
+static int scroll_last_x, scroll_last_y, scroll_last_width;
+
+static void gui_clickmap_add(int x, int y, int w, int h, int key);
+
+/* keys only the mouse produces: a row of a list (settings) */
+#define GUI_MOUSE_KEY_ROW 0x20000
+
+/* registers line `line` of the last scroll drawn as a whole */
+static void
+gui_clickmap_add_scroll_line(int line, int key)
+{
+    gui_clickmap_add(scroll_last_x, scroll_last_y + line * SCROLL_ELEMENT_SIZE,
+                     scroll_last_width * SCROLL_ELEMENT_SIZE,
+                     SCROLL_ELEMENT_SIZE, key);
+}
+
+
+static void
+gui_clickmap_clear(void)
+{
+    clickmap_num = 0;
+}
+
+
+static void
+gui_clickmap_add(int x, int y, int w, int h, int key)
+{
+    int i;
+
+    /* drawn again: move it to the top instead of adding it twice */
+    for (i = 0; i < clickmap_num; ++i)
+        if (clickmap[i].x == x && clickmap[i].y == y && clickmap[i].w == w
+            && clickmap[i].h == h && clickmap[i].key == key) {
+            memmove(clickmap + i, clickmap + i + 1,
+                    (clickmap_num - i - 1) * sizeof(ClickRegion));
+            clickmap_num--;
+            break;
+        }
+
+    if (clickmap_num == CLICKMAP_MAX)
+        return;
+    clickmap[clickmap_num].x = x;
+    clickmap[clickmap_num].y = y;
+    clickmap[clickmap_num].w = w;
+    clickmap[clickmap_num].h = h;
+    clickmap[clickmap_num].key = key;
+    clickmap_num++;
+}
+
+
+/* key at x, y; 0 on a dialog but not on a hotspot; -1 on nothing */
+static int
+gui_clickmap_hit(int x, int y)
+{
+    int i;
+
+    for (i = clickmap_num - 1; i >= 0; --i)
+        if (x >= clickmap[i].x && x < clickmap[i].x + clickmap[i].w
+            && y >= clickmap[i].y && y < clickmap[i].y + clickmap[i].h)
+            return clickmap[i].key;
+    return -1;
+}
+
+
+/* key for a hotspot word of a scroll line, 0 if it is none */
+static int
+gui_hotspot_key(const char *word, int len, int line_has_exit)
+{
+    int i, upper = 0, upper_at = -1;
+
+    if (len == 2 && word[1] == '.' && isalnum((unsigned char)word[0]))
+        return tolower((unsigned char)word[0]);         /* "L." "1." */
+    if (len > 2 && word[1] == '.' && isdigit((unsigned char)word[0]))
+        return word[0];                                 /* "1.*Sword" */
+    if (len == 4 && !strncmp(word, "Tab.", 4))
+        return KEY_TAB;
+    if (len == 2 && !strncmp(word, "UP", 2))
+        return KEY_UP;
+    if (len == 4 && !strncmp(word, "DOWN", 4))
+        return KEY_DOWN;
+    if (len == 4 && !strncmp(word, "PgUp", 4))
+        return KEY_PAGEUP;
+    if (len == 4 && !strncmp(word, "PgDn", 4))
+        return KEY_PAGEDOWN;
+
+    /* "eXit": one capital inside a lower case word */
+    for (i = 0; i < len; ++i)
+        if (isupper((unsigned char)word[i])) {
+            upper++;
+            upper_at = i;
+        }
+    if (upper == 1 && upper_at > 0 && islower((unsigned char)word[0]))
+        return tolower((unsigned char)word[upper_at]);
+
+    /* "Question eXit" */
+    if (line_has_exit && len > 1 && isupper((unsigned char)word[0])
+        && islower((unsigned char)word[1]))
+        return tolower((unsigned char)word[0]);
+
+    return 0;
+}
+
+
+/*
+  finds the hotspots of a scroll line drawn with its first character at
+  x, y and registers them; a hotspot reaches to the next one or the end
+  of the line, so "L. Load Game" is clickable as a whole
+*/
+
+static void
+gui_clickmap_scan_line(const char *line, int width, int x, int y)
+{
+    int keys[DEFAULT_SCROLL_WIDTH * 2], starts[DEFAULT_SCROLL_WIDTH * 2];
+    int n = 0, len = 0, i, k, has_exit = 0;
+    int size = SCROLL_ELEMENT_SIZE;
+
+    while (len < width && line[len])
+        ++len;
+
+    /* "<  Frodo  >": the arrows change the character */
+    for (i = 0; i < len && line[i] == ' '; ++i)
+        ;
+    if (i < len && line[i] == '<' && line[len - 1] == '>') {
+        gui_clickmap_add(x + i * size, y, size, size, KEY_LEFT);
+        gui_clickmap_add(x + (len - 1) * size, y, size, size, KEY_RIGHT);
+        return;
+    }
+
+    /* "(Y/N)" */
+    for (i = 0; i + 4 < len; ++i)
+        if (!strncmp(line + i, "(Y/N)", 5)) {
+            gui_clickmap_add(x + i * size, y, 2 * size, size, 'y');
+            gui_clickmap_add(x + (i + 3) * size, y, 2 * size, size, 'n');
+            return;
+        }
+
+    for (i = 0; i < len; ++i)
+        if (i == 0 || line[i - 1] == ' ') {
+            for (k = i; k < len && line[k] != ' '; ++k)
+                ;
+            if (gui_hotspot_key(line + i, k - i, 0) == 'x'
+                && islower((unsigned char)line[i]))
+                has_exit = 1;
+        }
+
+    for (i = 0; i < len && n < DEFAULT_SCROLL_WIDTH * 2; ++i)
+        if (line[i] != ' ' && (i == 0 || line[i - 1] == ' ')) {
+            for (k = i; k < len && line[k] != ' '; ++k)
+                ;
+            keys[n] = gui_hotspot_key(line + i, k - i, has_exit);
+            if (keys[n]) {
+                starts[n] = i;
+                n++;
+            }
+        }
+
+    for (i = 0; i < n; ++i) {
+        int end = i + 1 < n ? starts[i + 1] : len;
+        gui_clickmap_add(x + starts[i] * size, y,
+                         (end - starts[i]) * size, size, keys[i]);
+    }
+}
+
+
+/*
   clears screen and draws the bounding chain
 */
 
@@ -297,6 +486,7 @@ gui_clear(void)
     if (*gui_components == NULL)
         return;
 
+    gui_clickmap_clear();
 
     graphics_set_window(0, 0, screen_width - 1, screen_height - 1);
     graphics_clear_screen();
@@ -391,7 +581,16 @@ draw_scroll(int x, int y, int width, int height, const char *text[])
                 break;
         }
 
-
+    /* mouse: the scroll covers what is below it; its hotspots are keys
+       (positions are relative to the graphics window) */
+    gui_clickmap_add(window_x + x, window_y + y, (width + 2) * size,
+                     (height + 2) * size, 0);
+    for (j = 0; j < height; ++j)
+        gui_clickmap_scan_line(text[j], width, window_x + x + size,
+                               window_y + y + (j + 1) * size);
+    scroll_last_x = window_x + x + size;
+    scroll_last_y = window_y + y + size;
+    scroll_last_width = width;
 }
 
 
@@ -495,6 +694,25 @@ main_menu_draw(void)
     pixmap_draw(gui_life_bar, gui_menu_x + 20,
                 gui_menu_y + 9 + MAX_LIFE_BAR - life);
     gui_life_bar->height = 100;
+
+    /* mouse: the ten picture buttons, two rows of five, and the portrait */
+    {
+        static const char top[5] = { 'a', 'v', 'g', 'u', 's' };
+        static const char bottom[5] = { 'm', 't', 'l', 'o', 'x' };
+        int i;
+
+        gui_clickmap_add(window_x + gui_menu_x, window_y + gui_menu_y,
+                         gui_components[GUI_MENU]->width,
+                         gui_components[GUI_MENU]->height, 0);
+        for (i = 0; i < 5; ++i) {
+            gui_clickmap_add(window_x + gui_menu_x + 120 + 40 * i,
+                             window_y + gui_menu_y, 40, 26, top[i]);
+            gui_clickmap_add(window_x + gui_menu_x + 120 + 40 * i,
+                             window_y + gui_menu_y + 26, 40, 30, bottom[i]);
+        }
+        gui_clickmap_add(window_x + gui_menu_x + 44, window_y + gui_menu_y,
+                         76, 56, 'c');
+    }
 }
 
 
@@ -1261,6 +1479,10 @@ dialog_saveload_draw(int load)
         text[i] = lines[i];
 
     draw_scroll(0, 0, -SAVELOAD_SCROLL_WIDTH, n, text);
+
+    /* mouse: each slot line is clickable as a whole */
+    for (i = 1; i < n - 1; ++i)
+        gui_clickmap_add_scroll_line(i, tolower((unsigned char)lines[i][0]));
 }
 
 #endif
@@ -1445,6 +1667,10 @@ dialog_settings_draw(void)
         text[i] = lines[i];
 
     draw_scroll(0, 0, -SETTINGS_SCROLL_WIDTH, n, text);
+
+    /* mouse: click a line to choose it, click it again to change it */
+    for (i = 0; i < SETTINGS_NUM; ++i)
+        gui_clickmap_add_scroll_line(i + 1, GUI_MOUSE_KEY_ROW + i);
 }
 
 
@@ -1471,7 +1697,12 @@ dialog_settings_key(int key)
         return;
     }
 
-    if (key == KEY_UP)
+    if (key >= GUI_MOUSE_KEY_ROW && key < GUI_MOUSE_KEY_ROW + SETTINGS_NUM) {
+        if (settings_row == key - GUI_MOUSE_KEY_ROW)
+            delta = 1;
+        else
+            settings_row = key - GUI_MOUSE_KEY_ROW;
+    } else if (key == KEY_UP)
         settings_row = (settings_row + SETTINGS_NUM - 1) % SETTINGS_NUM;
     else if (key == KEY_DOWN)
         settings_row = (settings_row + 1) % SETTINGS_NUM;
@@ -3708,6 +3939,11 @@ main_menu_key(int key)
             dialog_view_show();
             break;
 
+        case 'o':
+            if (!combat_get_mode())
+                dialog_options_show();
+            break;
+
 #ifdef WIZARD_MODE
         case 'w':
             if (lotr_key_ctrl())
@@ -3746,6 +3982,65 @@ main_menu_key(int key)
 /*
   gui frame - returns nonzero if a dialog is active (game paused)
 */
+
+/*
+  mouse: turn the next click or wheel turn into a key, or into a walk
+*/
+
+static int
+gui_mouse_key(void)
+{
+    int x, y, hit;
+
+    switch (lotr_get_mouse(&x, &y)) {
+        case LOTR_MOUSE_LEFT:
+            hit = gui_clickmap_hit(x, y);
+            if (hit > 0)
+                return hit;
+            if (dialog_mode == DIALOG_NONE) {
+                if (hit < 0)
+                    game_walk_to(x, y);
+                return 0;
+            }
+            /* reading: a click anywhere goes on */
+            if (dialog_mode == DIALOG_MESSAGE
+                || dialog_mode == DIALOG_PARAGRAPH
+                || dialog_mode == DIALOG_BOOK || dialog_mode == DIALOG_DIED)
+                return ' ';
+            return 0;
+
+        case LOTR_MOUSE_RIGHT:
+            /* back out; on the map it opens the menu */
+            switch (dialog_mode) {
+                case DIALOG_NONE:
+                    return ' ';
+                case DIALOG_MESSAGE:
+                case DIALOG_PARAGRAPH:
+                case DIALOG_BOOK:
+                    return ' ';
+                case MAIN_MENU:
+                    /* in combat X would end the character's turn */
+                    return combat_get_mode() ? 0 : 'x';
+                case DIALOG_QUESTION:  /* typing */
+                case DIALOG_MESSAGE_YN:
+                case DIALOG_DIED:
+                    return 0;
+                default:
+                    return 'x';
+            }
+
+        case LOTR_MOUSE_WHEEL_UP:
+            return dialog_mode != DIALOG_NONE ? KEY_UP : 0;
+
+        case LOTR_MOUSE_WHEEL_DOWN:
+            return dialog_mode != DIALOG_NONE ? KEY_DOWN : 0;
+
+        default:
+            return 0;
+    }
+}
+
+
 
 #ifndef DEMO
 /*
@@ -3824,6 +4119,8 @@ gui_frame(void)
         dialog_map_frame();
 
     key = lotr_get_key();
+    if (key == 0)
+        key = gui_mouse_key();
 
     if (key == 0 && !lotr_key_esc())
         return dialog_mode;

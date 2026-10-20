@@ -84,6 +84,17 @@ extern int lotr_kb_hit(void);
 /* get last pressed key - return 0 if none */
 extern int lotr_get_key(void);
 
+/* mouse: next click or wheel turn, 0 if none; x, y in screen pixels
+   (320x200) */
+#define LOTR_MOUSE_LEFT       1
+#define LOTR_MOUSE_RIGHT      2
+#define LOTR_MOUSE_WHEEL_UP   3
+#define LOTR_MOUSE_WHEEL_DOWN 4
+extern int lotr_get_mouse(int *x, int *y);
+
+/* is the left button held down? where, in screen pixels */
+extern int lotr_mouse_held(int *x, int *y);
+
 /* disable keyboard input */
 extern void lotr_input_disable(void);
 
