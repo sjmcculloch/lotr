@@ -2723,6 +2723,13 @@ struct plm_video_t {
 
 	int has_sequence_header;
 
+	// LOTR patch: ReelMagic "magical" MPEG-1 support (see liblotr/mpg.c).
+	// lotr_magical is set when the sequence header's picture rate code is
+	// >= 9; lotr_fcode_override (1..7, 0 = off) replaces the scrambled
+	// f_code of every P and B picture.
+	int lotr_magical;
+	int lotr_fcode_override;
+
 	int quantizer_scale;
 	int slice_begin;
 	int macroblock_address;
@@ -2966,7 +2973,16 @@ int plm_video_decode_sequence_header(plm_video_t *self) {
 		PLM_VIDEO_PIXEL_ASPECT_RATIO[pixel_aspect_ratio_code];
 
 	// Get frame rate
-	self->framerate = PLM_VIDEO_PICTURE_RATE[plm_buffer_read(self->buffer, 4)];
+	{
+		// LOTR patch: ReelMagic files set bit 3 of the picture rate code;
+		// the real code is the low 3 bits.
+		int picture_rate = plm_buffer_read(self->buffer, 4);
+		if (picture_rate >= 9) {
+			self->lotr_magical = TRUE;
+			picture_rate &= 0x7;
+		}
+		self->framerate = PLM_VIDEO_PICTURE_RATE[picture_rate];
+	}
 
 	// Skip bit_rate, marker, buffer_size and constrained bit
 	plm_buffer_skip(self->buffer, 18 + 1 + 10 + 1);
@@ -3058,6 +3074,9 @@ void plm_video_decode_picture(plm_video_t *self) {
 			// Ignore picture with zero f_code
 			return;
 		}
+		if (self->lotr_fcode_override) {
+			f_code = self->lotr_fcode_override;  // LOTR patch
+		}
 		self->motion_forward.r_size = f_code - 1;
 	}
 
@@ -3068,6 +3087,9 @@ void plm_video_decode_picture(plm_video_t *self) {
 		if (f_code == 0) {
 			// Ignore picture with zero f_code
 			return;
+		}
+		if (self->lotr_fcode_override) {
+			f_code = self->lotr_fcode_override;  // LOTR patch
 		}
 		self->motion_backward.r_size = f_code - 1;
 	}

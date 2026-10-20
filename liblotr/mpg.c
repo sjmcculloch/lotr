@@ -166,6 +166,75 @@ mpg_find(const char *name, char *path, size_t pathlen)
 }
 
 
+/*
+   ReelMagic "magical" MPEG-1 files store wrong f_code values in their P and
+   B picture headers; the ReelMagic card recovered them using a "magic key".
+   With the default key (0x40044041, which Lord of the Rings uses), pictures
+   whose temporal sequence number is 3 or 8 carry the true value. This is the
+   method DOSBox Staging's ReelMagic emulation uses for this game. We scan the
+   file for such pictures and take the most common f_code among them.
+
+   Returns 1..7, or 0 if none found.
+*/
+int
+mpg_find_magical_fcode(const char *path, int *votes_out)
+{
+    FILE *f;
+    long len;
+    unsigned char *buf;
+    int votes[8] = { 0 };
+    int total = 0, best = 0, i;
+    long p;
+
+    if ((f = fopen(path, "rb")) == NULL)
+        return 0;
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len < 16 || (buf = malloc(len)) == NULL) {
+        fclose(f);
+        return 0;
+    }
+    if (fread(buf, 1, len, f) != (size_t) len) {
+        free(buf);
+        fclose(f);
+        return 0;
+    }
+    fclose(f);
+
+    for (p = 0; p + 9 < len && total < 25; ++p) {
+        unsigned long long v;
+        int tsn, type, fcode;
+
+        /* picture start code 00 00 01 00 */
+        if (buf[p] != 0 || buf[p + 1] != 0 || buf[p + 2] != 1 || buf[p + 3] != 0)
+            continue;
+
+        /* temporal_reference(10) type(3) vbv_delay(16) full_px(1) f_code(3) */
+        v = ((unsigned long long) buf[p + 4] << 32) |
+            ((unsigned long long) buf[p + 5] << 24) |
+            ((unsigned long long) buf[p + 6] << 16) |
+            ((unsigned long long) buf[p + 7] << 8) | buf[p + 8];
+        tsn = (int) ((v >> 30) & 0x3ff);
+        type = (int) ((v >> 27) & 0x7);
+        fcode = (int) ((v >> 7) & 0x7);
+
+        if ((type == 2 || type == 3) && (tsn == 3 || tsn == 8) && fcode >= 1) {
+            votes[fcode]++;
+            total++;
+        }
+    }
+    free(buf);
+
+    for (i = 1; i <= 7; ++i)
+        if (votes[i] > votes[best])
+            best = i;
+    if (votes_out)
+        *votes_out = best ? votes[best] : 0;
+    return best;
+}
+
+
 int
 mpg_exists(const char *name)
 {
@@ -226,6 +295,25 @@ mpg_play(const char *name)
         plm_destroy(plm);
         return 0;
     }
+
+    if (plm->video_decoder && plm->video_decoder->lotr_magical) {
+        const char *force = getenv("LOTR_MOVIE_FCODE");
+        int votes = 0;
+        int fcode = (force && force[0] >= '1' && force[0] <= '7' && !force[1])
+            ? force[0] - '0' : mpg_find_magical_fcode(path, &votes);
+
+        if (fcode) {
+            plm->video_decoder->lotr_fcode_override = fcode;
+            fprintf(stderr, "lotr: %s: ReelMagic movie, f_code %d (%s)\n",
+                    path, fcode, (force && votes == 0) ? "LOTR_MOVIE_FCODE" : "detected");
+        } else {
+            fprintf(stderr, "lotr: %s: ReelMagic movie but no f_code found;"
+                    " motion will look wrong\n", path);
+        }
+    }
+    fprintf(stderr, "lotr: %s: %dx%d, %.3f fps, %d audio stream(s)\n", path,
+            plm_get_width(plm), plm_get_height(plm), plm_get_framerate(plm),
+            plm_get_num_audio_streams(plm));
 
     memset(&st, 0, sizeof(st));
 

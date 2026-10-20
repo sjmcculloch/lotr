@@ -52,6 +52,18 @@ main(int argc, char *argv[])
 {
     int game_num = 0;
 
+#ifdef WIN32
+    /* No console on Windows: keep diagnostics in lotr.log next to the exe */
+    {
+        char *base = SDL_GetBasePath();
+        char logpath[1100];
+        snprintf(logpath, sizeof(logpath), "%slotr.log", base ? base : "");
+        if (freopen(logpath, "w", stderr) != NULL)
+            setvbuf(stderr, NULL, _IONBF, 0);
+        SDL_free(base);
+    }
+#endif
+
     /* Check if game data is present */
     if (!lotr_file_exists("arts.dat")) {
         char message[1200];

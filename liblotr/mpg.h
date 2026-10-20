@@ -19,4 +19,7 @@ extern int mpg_exists(const char *name);
 /* play <name>.mpg; returns 0 if it is missing or unreadable */
 extern int mpg_play(const char *name);
 
+/* true f_code of a ReelMagic "magical" MPEG-1 file, 0 if not found */
+extern int mpg_find_magical_fcode(const char *path, int *votes);
+
 #endif /* _MPG_H */
