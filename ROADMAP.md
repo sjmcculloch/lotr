@@ -12,7 +12,7 @@ explicitly out of scope.
    date/time per slot; expose slots 6-9.
 3. ~~**Display filters**~~ (done): runtime toggle between sharp pixels, hqx smoothing
    and a CRT-style look (hqx support already exists, behind HAVE_LIBHQX).
-4. **In-game settings**: music volume, effects volume, display filter and
+4. ~~**In-game settings**~~ (done): music volume, effects volume, display filter and
    fullscreen in a menu, saved to a settings file next to the exe.
 
 ## Medium
