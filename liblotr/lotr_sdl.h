@@ -110,6 +110,25 @@ extern SDL_Renderer *lotr_sdl_renderer(void);
 extern void lotr_show_screen(Uint8 *newscreen);
 
 
+/* display filters applied when a screen is shown (F10 cycles them) */
+#define LOTR_DISPLAY_SHARP   0
+#define LOTR_DISPLAY_SMOOTH  1
+#define LOTR_DISPLAY_CRT     2
+#define LOTR_DISPLAY_FILTERS 3
+
+/* current display filter */
+extern int lotr_display_filter(void);
+
+/* name of the current display filter, as stored in settings.txt */
+extern const char *lotr_display_filter_name(void);
+
+/* select a display filter */
+extern void lotr_display_filter_set(int filter);
+
+/* select the next display filter and remember it in settings.txt */
+extern void lotr_display_filter_next(void);
+
+
 /* sets palette */
 extern void lotr_system_set_palette(Uint8 *palette, int firstcolor,
                                     int ncolors);

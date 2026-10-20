@@ -462,6 +462,134 @@ lotr_replace_file(const char *tmp, const char *path, int backup)
 
 
 /*
+  settings.txt: player settings as "key = value" lines, '#' starts a comment
+  it lives next to the exe on Windows and in ~/.lotr elsewhere
+*/
+
+static const char *
+lotr_settings_path(void)
+{
+    static char path[1100];
+
+#ifdef WIN32
+    snprintf(path, sizeof(path), "%ssettings.txt", lotr_base_path());
+#else
+    snprintf(path, sizeof(path), "%s", lotr_homedir_filename("settings.txt"));
+#endif
+    return path;
+}
+
+
+/*
+  if line sets key, return a pointer to its value (whitespace trimmed,
+  line is modified), else NULL
+*/
+
+static char *
+lotr_setting_match(char *line, const char *key)
+{
+    char *eq, *end, *value;
+    size_t keylen = strlen(key);
+
+    while (*line == ' ' || *line == '\t')
+        ++line;
+    if (*line == '#' || SDL_strncasecmp(line, key, keylen) != 0)
+        return NULL;
+
+    eq = line + keylen;
+    while (*eq == ' ' || *eq == '\t')
+        ++eq;
+    if (*eq != '=')
+        return NULL;
+
+    value = eq + 1;
+    while (*value == ' ' || *value == '\t')
+        ++value;
+    end = value + strlen(value);
+    while (end > value && (end[-1] == '\n' || end[-1] == '\r'
+                           || end[-1] == ' ' || end[-1] == '\t'))
+        *--end = 0;
+
+    return value;
+}
+
+
+/*
+  read setting key into value, return 1 if it is set
+*/
+
+int
+lotr_setting_get(const char *key, char *value, int size)
+{
+    FILE *file;
+    char line[256];
+    char *v;
+    int found = 0;
+
+    file = fopen(lotr_settings_path(), "r");
+    if (file == NULL)
+        return 0;
+
+    while (!found && fgets(line, sizeof(line), file) != NULL)
+        if ((v = lotr_setting_match(line, key)) != NULL) {
+            snprintf(value, size, "%s", v);
+            found = 1;
+        }
+
+    fclose(file);
+    return found;
+}
+
+
+/*
+  store setting key, keeping every other line of the file as it was
+  return 1 on success
+*/
+
+int
+lotr_setting_set(const char *key, const char *value)
+{
+    char tmp[1200];
+    char line[256];
+    char copy[256];
+    FILE *in, *out;
+    int done = 0;
+
+    snprintf(tmp, sizeof(tmp), "%s.tmp", lotr_settings_path());
+    out = fopen(tmp, "w");
+    if (out == NULL) {
+        fprintf(stderr, "lotr: can not write %s\n", tmp);
+        return 0;
+    }
+
+    in = fopen(lotr_settings_path(), "r");
+    if (in != NULL) {
+        while (fgets(line, sizeof(line), in) != NULL) {
+            memcpy(copy, line, sizeof(line));
+            if (!done && lotr_setting_match(copy, key) != NULL) {
+                fprintf(out, "%s = %s\n", key, value);
+                done = 1;
+            } else {
+                fputs(line, out);
+            }
+        }
+        fclose(in);
+    }
+
+    if (!done)
+        fprintf(out, "%s = %s\n", key, value);
+
+    if (fclose(out) != 0) {
+        remove(tmp);
+        return 0;
+    }
+
+    return lotr_replace_file(tmp, lotr_settings_path(), 0);
+}
+
+
+
+/*
   read integer property from node
 */
 

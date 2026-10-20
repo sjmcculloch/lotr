@@ -33,6 +33,14 @@ setting a LOTR_DATA environment variable to the folder holding arts.dat.
 Saved games go in the "saves" folder next to lotr.exe, created
 automatically.
 
+DISPLAY
+-------
+F10 cycles the look of the game: sharp pixels (the original look),
+smooth (hq4x smoothing) and CRT (soft pixels with scanlines; the
+scanlines show when the window is at least 3x the game's 320x200).
+The window title names the filter. Your choice is kept in settings.txt
+next to lotr.exe. Cutscenes are not filtered.
+
 SAVING
 ------
   F5   quicksave            F9   quickload (no confirmation)
@@ -55,6 +63,7 @@ CONTROLS
   O  options      H  help          Q  quit
   Esc             cancel / options
   F5 / F9         quicksave / quickload
+  F10             display: sharp pixels / smooth (hqx) / CRT scanlines
   Alt+Enter, F11  toggle fullscreen
   Any key         skip a cutscene (ReelMagic movies)
 
@@ -73,6 +82,8 @@ Changes in this build:
   - F5/F9 quicksave and quickload, autosave on entering a new map, and a
     save/load screen showing leader, region and date for slots 1-9;
     saves are written safely (a crash mid-save cannot damage a slot)
+  - F10 display filters: sharp, smooth (hq4x by Maxim Stepin and
+    Cameron Zemek, LGPL) and CRT, remembered in settings.txt
   - diagnostics written to lotr.log next to lotr.exe
   - plays the CD soundtrack (ripped from the disc) as background music,
     pausing for films and resuming where it left off

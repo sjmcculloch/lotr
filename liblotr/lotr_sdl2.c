@@ -30,9 +30,8 @@
 #include "lotr_sdl.h"
 #include "midi.h"
 #include "cdmusic.h"
-#ifdef HAVE_LIBHQX
 #include "hqx.h"
-#endif
+#include "utils.h"
 #include <SDL.h>
 #ifdef HAVE_LIBSDL_MIXER
 #include <SDL_mixer.h>
@@ -49,6 +48,28 @@ static SDL_Renderer *main_window_renderer = NULL;
 
 /* palette */
 SDL_Color active_palette[256];
+
+/* display filter, see lotr_show_screen() */
+static int display_filter = LOTR_DISPLAY_SHARP;
+static const char *display_filter_names[LOTR_DISPLAY_FILTERS] =
+    { "sharp", "smooth", "crt" };
+
+/* filtered frame: streaming texture and its pixels */
+static SDL_Texture *filter_texture = NULL;
+static int filter_texture_w, filter_texture_h;
+static Uint32 *filter_pixels = NULL;
+
+/* CRT scanline overlay, built for one whole-number window scale */
+static SDL_Texture *scanline_texture = NULL;
+static int scanline_scale = 0;
+
+/* CRT: the frame is enlarged this much with sharp pixels, then smoothly to
+   the window, which softens pixel edges by about a third of a pixel */
+#define CRT_PRESCALE 3
+
+/* CRT: brighten by this many 256ths to make up for the light the
+   scanlines take away (about 1/8) */
+#define CRT_BOOST 292
 
 /* keyboard buffer */
 #define KEYBOARDBUFFERESIZE 16
@@ -118,9 +139,6 @@ lotr_system_init(void)
     unsigned win_flags = 0;
     int win_fact = SCREEN_FACT;
 
-#ifdef HAVE_LIBHQX
-    hqxInit();
-#endif
 #ifdef FULLSCREEN
     win_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 #endif
@@ -171,6 +189,16 @@ lotr_system_init(void)
 
     memset(active_palette, '\0', sizeof(active_palette));
 
+    {
+        char name[32];
+        int i;
+
+        if (lotr_setting_get("display", name, sizeof(name)))
+            for (i = 0; i < LOTR_DISPLAY_FILTERS; ++i)
+                if (!SDL_strcasecmp(name, display_filter_names[i]))
+                    lotr_display_filter_set(i);
+    }
+
     lotr_reset_keyboard();
 
     desired.freq = 22050;
@@ -214,6 +242,12 @@ lotr_system_close(void)
     if (!midi_disabled)
         Mix_CloseAudio();
 #endif
+
+    if (filter_texture)
+        SDL_DestroyTexture(filter_texture);
+    if (scanline_texture)
+        SDL_DestroyTexture(scanline_texture);
+    free(filter_pixels);
 
     /* Shutdown all subsystems */
     SDL_DestroyWindow(main_window);
@@ -319,6 +353,13 @@ lotr_poll_events(void)
                                 fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
                         SDL_ShowCursor(fs ? SDL_ENABLE : SDL_DISABLE);
                     }
+                    break;
+                }
+
+                /* F10 cycles the display filter; never reaches the game */
+                if (event.key.keysym.sym == SDLK_F10) {
+                    if (!event.key.repeat)
+                        lotr_display_filter_next();
                     break;
                 }
 
@@ -498,78 +539,257 @@ lotr_sdl_renderer(void)
 }
 
 
+/*
+  display filters
+*/
+
+int
+lotr_display_filter(void)
+{
+    return display_filter;
+}
+
+
+const char *
+lotr_display_filter_name(void)
+{
+    return display_filter_names[display_filter];
+}
+
+
+void
+lotr_display_filter_set(int filter)
+{
+    char title[64];
+
+    if (filter < 0 || filter >= LOTR_DISPLAY_FILTERS)
+        return;
+    display_filter = filter;
+
+    /* the window title says which filter is on, unless it is the default */
+    if (main_window != NULL) {
+        if (filter == LOTR_DISPLAY_SHARP)
+            snprintf(title, sizeof(title), "Lord of the Rings");
+        else
+            snprintf(title, sizeof(title), "Lord of the Rings (%s)",
+                     filter == LOTR_DISPLAY_SMOOTH ? "smooth" : "CRT");
+        SDL_SetWindowTitle(main_window, title);
+    }
+}
+
+
+void
+lotr_display_filter_next(void)
+{
+    lotr_display_filter_set((display_filter + 1) % LOTR_DISPLAY_FILTERS);
+    lotr_setting_set("display", lotr_display_filter_name());
+    fprintf(stderr, "lotr: display filter: %s\n", lotr_display_filter_name());
+}
+
+
+/*
+  streaming texture of the given size for a filtered frame, drawn with
+  smooth scaling; filter_pixels can hold one frame of it
+*/
+
+static SDL_Texture *
+lotr_filter_texture(int w, int h)
+{
+    if (filter_texture != NULL
+        && (filter_texture_w != w || filter_texture_h != h)) {
+        SDL_DestroyTexture(filter_texture);
+        filter_texture = NULL;
+        free(filter_pixels);
+        filter_pixels = NULL;
+    }
+
+    if (filter_texture == NULL) {
+        filter_texture = SDL_CreateTexture(main_window_renderer,
+                                           SDL_PIXELFORMAT_ARGB8888,
+                                           SDL_TEXTUREACCESS_STREAMING, w, h);
+        filter_pixels = malloc((size_t)w * h * sizeof(Uint32));
+        if (filter_texture == NULL || filter_pixels == NULL) {
+            fprintf(stderr, "lotr: display filter disabled: %s\n",
+                    SDL_GetError());
+            if (filter_texture != NULL)
+                SDL_DestroyTexture(filter_texture);
+            filter_texture = NULL;
+            free(filter_pixels);
+            filter_pixels = NULL;
+            display_filter = LOTR_DISPLAY_SHARP;
+            return NULL;
+        }
+        SDL_SetTextureScaleMode(filter_texture, SDL_ScaleModeLinear);
+        filter_texture_w = w;
+        filter_texture_h = h;
+    }
+
+    return filter_texture;
+}
+
+
+/*
+  darkened lines between the rows of game pixels, one texture row per
+  window pixel row; needs at least 3 window pixels per game pixel
+*/
+
+static void
+lotr_draw_scanlines(void)
+{
+    float sx, sy;
+    int n, rows, i, r;
+    Uint32 *line;
+    Uint8 alpha;
+
+    SDL_RenderGetScale(main_window_renderer, &sx, &sy);
+    n = (int)(sy + 0.5f);
+    if (n < 3)
+        return;
+
+    if (scanline_texture == NULL || scanline_scale != n) {
+        if (scanline_texture != NULL)
+            SDL_DestroyTexture(scanline_texture);
+        rows = SCREEN_HEIGHT * n;
+        scanline_texture = SDL_CreateTexture(main_window_renderer,
+                                             SDL_PIXELFORMAT_ARGB8888,
+                                             SDL_TEXTUREACCESS_STATIC, 1,
+                                             rows);
+        line = malloc(rows * sizeof(Uint32));
+        if (scanline_texture == NULL || line == NULL) {
+            free(line);
+            scanline_scale = 0;
+            return;
+        }
+
+        /* the last row of each game pixel is darkest, the one before it
+           a little dark on large windows: transparent black otherwise */
+        for (i = 0; i < rows; ++i) {
+            r = i % n;
+            if (r == n - 1)
+                alpha = 0x80;
+            else if (n >= 5 && r == n - 2)
+                alpha = 0x30;
+            else
+                alpha = 0;
+            line[i] = (Uint32)alpha << 24;
+        }
+        SDL_UpdateTexture(scanline_texture, NULL, line, sizeof(Uint32));
+        free(line);
+        SDL_SetTextureBlendMode(scanline_texture, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureScaleMode(scanline_texture, SDL_ScaleModeNearest);
+        scanline_scale = n;
+    }
+
+    SDL_RenderCopy(main_window_renderer, scanline_texture, NULL, NULL);
+}
+
+
+/*
+  smooth: hq4x, then smooth scaling to the window
+*/
+
+static void
+lotr_present_smooth(SDL_Surface *frame)
+{
+    SDL_Texture *texture;
+
+    texture = lotr_filter_texture(SCREEN_WIDTH * 4, SCREEN_HEIGHT * 4);
+    if (texture == NULL)
+        return;
+
+    hq4x_32((const uint32_t *)frame->pixels, filter_pixels,
+            SCREEN_WIDTH, SCREEN_HEIGHT);
+    SDL_UpdateTexture(texture, NULL, filter_pixels,
+                      SCREEN_WIDTH * 4 * sizeof(Uint32));
+    SDL_RenderCopy(main_window_renderer, texture, NULL, NULL);
+}
+
+
+/*
+  CRT: slightly soft pixels and scanlines
+*/
+
+static void
+lotr_present_crt(SDL_Surface *frame)
+{
+    SDL_Texture *texture;
+    const Uint32 *src;
+    Uint32 *dst;
+    Uint32 c;
+    int x, y, i, w;
+    static Uint8 boost[256];
+
+    if (boost[255] == 0)
+        for (i = 0; i < 256; ++i)
+            boost[i] = i * CRT_BOOST / 256 > 255 ? 255 : i * CRT_BOOST / 256;
+
+    w = SCREEN_WIDTH * CRT_PRESCALE;
+    texture = lotr_filter_texture(w, SCREEN_HEIGHT * CRT_PRESCALE);
+    if (texture == NULL)
+        return;
+
+    for (y = 0; y < SCREEN_HEIGHT; ++y) {
+        src = (const Uint32 *)((const Uint8 *)frame->pixels
+                               + y * frame->pitch);
+        dst = filter_pixels + (size_t)y * CRT_PRESCALE * w;
+        for (x = 0; x < SCREEN_WIDTH; ++x) {
+            c = 0xff000000u | (Uint32)boost[(src[x] >> 16) & 0xff] << 16
+                | (Uint32)boost[(src[x] >> 8) & 0xff] << 8
+                | boost[src[x] & 0xff];
+            for (i = 0; i < CRT_PRESCALE; ++i)
+                *dst++ = c;
+        }
+        for (i = 1; i < CRT_PRESCALE; ++i)
+            memcpy(filter_pixels + ((size_t)y * CRT_PRESCALE + i) * w,
+                   filter_pixels + (size_t)y * CRT_PRESCALE * w,
+                   w * sizeof(Uint32));
+    }
+
+    SDL_UpdateTexture(texture, NULL, filter_pixels, w * sizeof(Uint32));
+    SDL_RenderCopy(main_window_renderer, texture, NULL, NULL);
+    lotr_draw_scanlines();
+}
+
+
+/*
+  shows a new screen
+*/
+
 void
 lotr_show_screen(Uint8 *newscreen)
 {
+    SDL_Surface *src;
+    SDL_Surface *frame;
+    SDL_Texture *texture;
+
     if (main_window_renderer == NULL)
         return;
-    SDL_Surface *src;
-#if SCREEN_FACT == 1
+
     /* convert pixels to 8-bit SDL surface */
     src = SDL_CreateRGBSurfaceFrom(
         newscreen, SCREEN_WIDTH, SCREEN_HEIGHT, 8, SCREEN_WIDTH, 0, 0, 0, 0);
     SDL_SetPaletteColors(src->format->palette, active_palette, 0, 256);
-#elif defined(HAVE_LIBHQX)
-    /* convert pixels to 8-bit SDL surface */
-    SDL_Surface *src8 = SDL_CreateRGBSurfaceFrom(
-        newscreen, SCREEN_WIDTH, SCREEN_HEIGHT, 8, SCREEN_WIDTH, 0, 0, 0, 0);
-    SDL_SetPaletteColors(src8->format->palette, active_palette, 0, 256);
-    /* output surface */
-    src = SDL_CreateRGBSurface(
-        0, SCREEN_WIDTH * SCREEN_FACT, SCREEN_HEIGHT * SCREEN_FACT, 32, 0, 0, 0, 0);
-    /* convert 8-bit SDL surface to 32-bit SDL */
-    SDL_Surface *src32 = SDL_ConvertSurface(src8, src->format, SDL_SWSURFACE);
-    /* apply HQX scalling from 32-bit source to screen */
-# if SCREEN_FACT == 2
-    hq2x_32(src32->pixels, src->pixels, SCREEN_WIDTH, SCREEN_HEIGHT); 
-# elif SCREEN_FACT == 3
-    hq3x_32(src32->pixels, src->pixels, SCREEN_WIDTH, SCREEN_HEIGHT); 
-# elif SCREEN_FACT == 4
-    hq4x_32(src32->pixels, src->pixels, SCREEN_WIDTH, SCREEN_HEIGHT); 
-# else
-#  error SCREEN_FACT must be 2, 3 or 4 for HQX
-# endif
-    SDL_FreeSurface(src8);
-    SDL_FreeSurface(src32);
-#else
-    /* convert pixels to 8-bit SDL surface */
-    src = SDL_CreateRGBSurface(
-        0, SCREEN_WIDTH * SCREEN_FACT, SCREEN_HEIGHT * SCREEN_FACT, 8, 0, 0, 0, 0);
-    SDL_SetPaletteColors(src->format->palette, active_palette, 0, 256);
 
-    int i, j;
-    Uint8 tmpscreen[SCREEN_WIDTH * SCREEN_HEIGHT * SCREEN_FACT];
-    Uint8 *ts;
-    Uint8 *pixels;
-
-    pixels = src->pixels;
-
-
-    /* multiply width */
-    ts = tmpscreen;
-    for (i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; ++i)
-        for (j = 0; j < SCREEN_FACT; ++j, ++ts)
-            *ts = newscreen[i];
-
-
-    /* multiply height */
-    ts = tmpscreen;
-    for (i = 0; i < SCREEN_HEIGHT; ++i) {
-        for (j = 0; j < SCREEN_FACT; ++j) {
-            memcpy(pixels, ts, SCREEN_WIDTH * SCREEN_FACT);
-            pixels += src->pitch;
-        }
-        ts += SCREEN_WIDTH * SCREEN_FACT;
-    }
-#endif
-
-    SDL_Texture *texture = SDL_CreateTextureFromSurface(main_window_renderer, src);
     SDL_RenderClear(main_window_renderer);
-    SDL_RenderCopy(main_window_renderer, texture, NULL, NULL);
+
+    if (display_filter == LOTR_DISPLAY_SHARP) {
+        texture = SDL_CreateTextureFromSurface(main_window_renderer, src);
+        SDL_RenderCopy(main_window_renderer, texture, NULL, NULL);
+        SDL_DestroyTexture(texture);
+    } else {
+        /* the filters work on 32-bit pixels */
+        frame = SDL_ConvertSurfaceFormat(src, SDL_PIXELFORMAT_ARGB8888, 0);
+        if (frame != NULL) {
+            if (display_filter == LOTR_DISPLAY_SMOOTH)
+                lotr_present_smooth(frame);
+            else
+                lotr_present_crt(frame);
+            SDL_FreeSurface(frame);
+        }
+    }
+
     SDL_RenderPresent(main_window_renderer);
 
-    /* cleanup */
-    SDL_DestroyTexture(texture);
     SDL_FreeSurface(src);
 }
 

@@ -21,20 +21,6 @@ AC_CHECK_LIB([SDL2_mixer],[Mix_Init])
 
 # Checks for libraries.
 PKG_CHECK_MODULES([XML2],[libxml-2.0])
-AC_ARG_WITH([hqx],
-	[AS_HELP_STRING([--with-hqx], [location of hqx])],
-	[AC_DEFINE([HAVE_LIBHQX], [1], [Define if you have libhqx])
-	 HQX_CFLAGS="-I$withval/include/hqx"
-	 HQX_LIBS="-L$withval/lib -lhqx"
-	],
-	[AC_CHECK_LIB([hqx],[hqxInit],
-	 [AC_DEFINE([HAVE_LIBHQX], [1], [Define if you have libhqx])
-	  HQX_CFLAGS="-I/usr/include/hqx"
-	  HQX_LIBS="-lhqx"
-	 ])
-	])
-AC_ARG_VAR([HQX_CFLAGS],[CFLAGS for libhqx])
-AC_ARG_VAR([HQX_LIBS],[LDFLAGS for libhqx])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stdlib.h string.h sys/param.h unistd.h])
