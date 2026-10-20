@@ -20,7 +20,7 @@ explicitly out of scope.
    quest hint, saved alongside the save game. Opened with a key (J).
 6. ~~**Map overlay**~~ (done): a full-screen map of explored areas (tools/maps2bmp.c
    and tools/ripmaps.c already render maps).
-7. **Mouse support**: see docs/MOUSE_INPUT_PLAN.md. Menus and dialogs
+7. ~~**Mouse support**~~ (done): see docs/MOUSE_INPUT_PLAN.md. Menus and dialogs
    first, then click-to-move.
 
 ## Big
