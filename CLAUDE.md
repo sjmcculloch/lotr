@@ -49,7 +49,11 @@ at a data folder.
 - `liblotr/lotr_sdl.c` is the **dead SDL1 backend**. Don't edit or copy from it.
 - **Keys / dialogs:** `gui_frame()` in `gui.c` dispatches on literal chars
   (space, a c g h l m o q s t u v). Options menu: s save, l load, m music,
-  p pause, q quit. Save/load accept slots 1-9 (menu lists 1-5).
+  p pause, q quit. Save/load list slots 1-9 with leader, region, date;
+  load also offers Q (`savegame.quick`, F5/F9) and A (`savegame.auto`,
+  written when a new map is entered, once `game_can_save()`). Saves are
+  plain XML, written to `.tmp` then swapped in; slots 1-9 keep a `.bak`.
+  `game_open_save()` validates a file before `game_load()` touches state.
 - **Data paths:** `lotr_data_directory()` in `utils.c` resolves `$LOTR_DATA`,
   then `<exe dir>/cd`, then the compiled default. Saves: `<exe dir>/saves`
   on Windows, `~/.lotr` elsewhere. Reads go through `lotr_fopen()` /

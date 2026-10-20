@@ -5,10 +5,10 @@ intact by default. Rough order, highest value first. Gamepad support is
 explicitly out of scope.
 
 ## Quick wins
-1. **Quicksave / autosave**: F5 quicksave and F9 quickload into a dedicated
+1. ~~**Quicksave / autosave**~~ (done): F5 quicksave and F9 quickload into a dedicated
    slot; autosave to its own slot on entering a new map. Never overwrite the
    player's manual slots.
-2. **Better save/load screen**: show location, party leader, and
+2. ~~**Better save/load screen**~~ (done): show location, party leader, and
    date/time per slot; expose slots 6-9.
 3. **Display filters**: runtime toggle between sharp pixels, hqx smoothing
    and a CRT-style look (hqx support already exists, behind HAVE_LIBHQX).
