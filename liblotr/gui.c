@@ -1160,20 +1160,21 @@ void
 dialog_options_show(void)
 {
 
-    const char *text[7] = {
+    const char *text[8] = {
         "OPTIONS",
         "L. Load Game",
         "S. Save Game",
         "Q. Quit Game",
         "P. Pause Game",
         "M. Start/Stop Music",
+        "C. Configure",
         "X. Exit"
     };
 
     dialog_mode = DIALOG_OPTIONS;
     dialog_confirm = 0;
 
-    draw_scroll(0, 0, -DEFAULT_SCROLL_WIDTH, 7, text);
+    draw_scroll(0, 0, -DEFAULT_SCROLL_WIDTH, 8, text);
 
 }
 
@@ -1359,6 +1360,153 @@ dialog_options_message_show(const char *text[7])
 
 
 /*
+  settings: one row per setting, Up/Down choose, Left/Right/Enter change;
+  every change is applied at once and remembered in settings.txt
+*/
+
+#define SETTINGS_SCROLL_WIDTH 36
+#define SETTINGS_LINE_SIZE    (SETTINGS_SCROLL_WIDTH + 1)
+
+enum {
+    SETTING_MUSIC,
+    SETTING_MUSIC_VOLUME,
+    SETTING_EFFECTS_VOLUME,
+    SETTING_DISPLAY,
+    SETTING_FULLSCREEN,
+    SETTINGS_NUM
+};
+
+static int settings_row = 0;
+
+
+/* "========--  80%" (the game font has no '#') */
+static void
+settings_volume_bar(char *buf, size_t size, int percent)
+{
+    char bar[11];
+    int i;
+
+    for (i = 0; i < 10; ++i)
+        bar[i] = i < (percent + 5) / 10 ? '=' : '-';
+    bar[10] = 0;
+    snprintf(buf, size, "%s %3d%%", bar, percent);
+}
+
+
+static void
+dialog_settings_draw(void)
+{
+    static const char *labels[SETTINGS_NUM] = {
+        "Music", "Music volume", "Effects volume", "Display", "Fullscreen"
+    };
+    static const char *display_names[LOTR_DISPLAY_FILTERS] = {
+        "Sharp", "Smooth", "CRT"
+    };
+    char lines[SETTINGS_NUM + 3][SETTINGS_LINE_SIZE];
+    char value[24];
+    const char *text[SETTINGS_NUM + 3];
+    int n = 0;
+    int i;
+
+    snprintf(lines[n++], SETTINGS_LINE_SIZE, "Settings");
+
+    for (i = 0; i < SETTINGS_NUM; ++i) {
+        switch (i) {
+            case SETTING_MUSIC:
+                snprintf(value, sizeof(value), "%s",
+                         !music_available() ? "no music files"
+                         : music_is_on() ? "On" : "Off");
+                break;
+            case SETTING_MUSIC_VOLUME:
+                settings_volume_bar(value, sizeof(value), music_get_volume());
+                break;
+            case SETTING_EFFECTS_VOLUME:
+                settings_volume_bar(value, sizeof(value),
+                                    effects_get_volume());
+                break;
+            case SETTING_DISPLAY:
+                snprintf(value, sizeof(value), "%s",
+                         display_names[lotr_display_filter()]);
+                break;
+            default:
+                snprintf(value, sizeof(value), "%s",
+                         lotr_fullscreen() ? "On" : "Off");
+                break;
+        }
+        snprintf(lines[n++], SETTINGS_LINE_SIZE, "%c %-15s %.18s",
+                 i == settings_row ? '>' : ' ', labels[i], value);
+    }
+
+    snprintf(lines[n++], SETTINGS_LINE_SIZE, "Arrows choose and change");
+    snprintf(lines[n++], SETTINGS_LINE_SIZE, "X. Exit");
+
+    for (i = 0; i < n; ++i)
+        text[i] = lines[i];
+
+    draw_scroll(0, 0, -SETTINGS_SCROLL_WIDTH, n, text);
+}
+
+
+void
+dialog_settings_show(void)
+{
+    dialog_mode = DIALOG_SETTINGS;
+    dialog_confirm = 0;
+
+    /* the wider scroll covers the options scroll; start from a clean map */
+    gui_clear();
+    game_draw_map();
+    dialog_settings_draw();
+}
+
+
+void
+dialog_settings_key(int key)
+{
+    int delta = 0;
+
+    if (key == 'x') {
+        quit_menu();
+        return;
+    }
+
+    if (key == KEY_UP)
+        settings_row = (settings_row + SETTINGS_NUM - 1) % SETTINGS_NUM;
+    else if (key == KEY_DOWN)
+        settings_row = (settings_row + 1) % SETTINGS_NUM;
+    else if (key == KEY_LEFT)
+        delta = -1;
+    else if (key == KEY_RIGHT || key == KEY_ENTER || key == ' ')
+        delta = 1;
+    else
+        return;
+
+    if (delta)
+        switch (settings_row) {
+            case SETTING_MUSIC:
+                music_set_on(!music_is_on());
+                break;
+            case SETTING_MUSIC_VOLUME:
+                music_set_volume(music_get_volume() + 10 * delta);
+                break;
+            case SETTING_EFFECTS_VOLUME:
+                effects_store_volume(effects_get_volume() + 10 * delta);
+                effects_preview();
+                break;
+            case SETTING_DISPLAY:
+                lotr_display_filter_step(delta);
+                break;
+            default:
+                lotr_set_fullscreen(!lotr_fullscreen());
+                break;
+        }
+
+    dialog_settings_draw();
+}
+
+
+
+/*
   parse options menu keyboard input
 */
 
@@ -1398,6 +1546,10 @@ dialog_options_key(int key)
         case 'm':
             toggle_music();
             quit_menu();
+            break;
+
+        case 'c':
+            dialog_settings_show();
             break;
 
         case 'q':
@@ -3363,6 +3515,10 @@ gui_frame(void)
             case DIALOG_SAVE:
             case DIALOG_LOAD:
                 dialog_saveload_key(key);
+                break;
+
+            case DIALOG_SETTINGS:
+                dialog_settings_key(key);
                 break;
 
             case DIALOG_MESSAGE:

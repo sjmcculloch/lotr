@@ -61,6 +61,18 @@ extern void music_combat_won(void);
 extern void toggle_music(void);
 
 
+/* settings menu; changes are remembered in settings.txt */
+extern int music_available(void);
+extern int music_is_on(void);
+extern void music_set_on(int on);
+extern int music_get_volume(void);          /* 0-100 */
+extern void music_set_volume(int percent);
+extern int effects_get_volume(void);        /* 0-100 */
+extern void effects_set_volume(int percent);    /* not remembered */
+extern void effects_store_volume(int percent);  /* remembered */
+extern void effects_preview(void);
+
+
 
 
 #endif /* _SOUND_H */

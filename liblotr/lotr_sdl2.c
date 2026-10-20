@@ -67,6 +67,8 @@ static int scanline_scale = 0;
    the window, which softens pixel edges by about a third of a pixel */
 #define CRT_PRESCALE 3
 
+static void lotr_apply_fullscreen(int on);
+
 /* CRT: brighten by this many 256ths to make up for the light the
    scanlines take away (about 1/8) */
 #define CRT_BOOST 292
@@ -197,6 +199,8 @@ lotr_system_init(void)
             for (i = 0; i < LOTR_DISPLAY_FILTERS; ++i)
                 if (!SDL_strcasecmp(name, display_filter_names[i]))
                     lotr_display_filter_set(i);
+        if (lotr_setting_get("fullscreen", name, sizeof(name)))
+            lotr_apply_fullscreen(!SDL_strcasecmp(name, "on"));
     }
 
     lotr_reset_keyboard();
@@ -346,20 +350,15 @@ lotr_poll_events(void)
                 if (event.key.keysym.sym == SDLK_F11 ||
                     (event.key.keysym.sym == SDLK_RETURN &&
                      (event.key.keysym.mod & KMOD_ALT))) {
-                    if (!event.key.repeat && main_window != NULL) {
-                        Uint32 fs = SDL_GetWindowFlags(main_window) &
-                            SDL_WINDOW_FULLSCREEN_DESKTOP;
-                        SDL_SetWindowFullscreen(main_window,
-                                fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
-                        SDL_ShowCursor(fs ? SDL_ENABLE : SDL_DISABLE);
-                    }
+                    if (!event.key.repeat)
+                        lotr_set_fullscreen(!lotr_fullscreen());
                     break;
                 }
 
                 /* F10 cycles the display filter; never reaches the game */
                 if (event.key.keysym.sym == SDLK_F10) {
                     if (!event.key.repeat)
-                        lotr_display_filter_next();
+                        lotr_display_filter_step(1);
                     break;
                 }
 
@@ -579,11 +578,71 @@ lotr_display_filter_set(int filter)
 
 
 void
-lotr_display_filter_next(void)
+lotr_display_filter_step(int delta)
 {
-    lotr_display_filter_set((display_filter + 1) % LOTR_DISPLAY_FILTERS);
+    lotr_display_filter_set((display_filter + delta + LOTR_DISPLAY_FILTERS)
+                            % LOTR_DISPLAY_FILTERS);
     lotr_setting_set("display", lotr_display_filter_name());
     fprintf(stderr, "lotr: display filter: %s\n", lotr_display_filter_name());
+}
+
+
+
+/*
+  fullscreen, remembered in settings.txt
+*/
+
+int
+lotr_fullscreen(void)
+{
+    return main_window != NULL && (SDL_GetWindowFlags(main_window)
+                                   & SDL_WINDOW_FULLSCREEN_DESKTOP);
+}
+
+
+static void
+lotr_apply_fullscreen(int on)
+{
+    if (main_window == NULL)
+        return;
+    SDL_SetWindowFullscreen(main_window,
+                            on ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+    SDL_ShowCursor(on ? SDL_DISABLE : SDL_ENABLE);
+}
+
+
+void
+lotr_set_fullscreen(int on)
+{
+    lotr_apply_fullscreen(on);
+    lotr_setting_set("fullscreen", on ? "on" : "off");
+}
+
+
+
+/*
+  volumes in percent
+*/
+
+void
+lotr_set_effects_volume(int percent)
+{
+#ifdef HAVE_LIBSDL_MIXER
+    Mix_Volume(-1, percent * MIX_MAX_VOLUME / 100);
+#else
+    (void)percent;
+#endif
+}
+
+
+void
+lotr_set_music_volume(int percent)
+{
+#ifdef HAVE_LIBSDL_MIXER
+    Mix_VolumeMusic(percent * MIX_MAX_VOLUME / 100);
+#else
+    (void)percent;
+#endif
 }
 
 

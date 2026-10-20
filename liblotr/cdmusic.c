@@ -24,7 +24,8 @@
         victory 9            fight won
 
     Without music.txt, every track at least a minute long goes in the
-    playlist. Which track the original played for which cue is not
+    playlist. The settings menu stores "music" (on/off) and "music_volume"
+    in settings.txt; those override music.txt. Which track the original played for which cue is not
     documented, so cues do nothing unless assigned; each one is logged.
 
 *****************************************************************************/
@@ -212,6 +213,15 @@ init(void)
 
     read_config();
 
+    /* the settings menu overrides music.txt */
+    {
+        char v[16];
+        if (lotr_setting_get("music_volume", v, sizeof(v)))
+            cdmusic_set_volume(atoi(v));
+        if (lotr_setting_get("music", v, sizeof(v)))
+            user_off = !SDL_strcasecmp(v, "off");
+    }
+
     if (!have_playlist_line) {
         /* no playlist given: every track of at least a minute */
         for (t = 1; t <= MAX_TRACK; ++t) {
@@ -302,6 +312,49 @@ cdmusic_toggle(void)
     user_off = 0;
     cdmusic_start();
     return 1;
+}
+
+
+int
+cdmusic_available(void)
+{
+    init();
+    return available;
+}
+
+
+int
+cdmusic_enabled(void)
+{
+    init();
+    return !user_off;
+}
+
+
+void
+cdmusic_set_enabled(int on)
+{
+    init();
+    if (!available)
+        user_off = !on;
+    else if (on ? user_off : !user_off)
+        cdmusic_toggle();
+}
+
+
+int
+cdmusic_volume(void)
+{
+    return volume;
+}
+
+
+void
+cdmusic_set_volume(int percent)
+{
+    volume = percent < 0 ? 0 : percent > 100 ? 100 : percent;
+    if (music)
+        Mix_VolumeMusic(volume * MIX_MAX_VOLUME / 100);
 }
 
 
@@ -405,6 +458,11 @@ cdmusic_update(void)
 void cdmusic_start(void) { }
 int cdmusic_stop(void) { return 0; }
 int cdmusic_toggle(void) { return 0; }
+int cdmusic_available(void) { return 0; }
+int cdmusic_enabled(void) { return 0; }
+void cdmusic_set_enabled(int on) { (void) on; }
+int cdmusic_volume(void) { return 0; }
+void cdmusic_set_volume(int percent) { (void) percent; }
 void cdmusic_pause(void) { }
 void cdmusic_resume(void) { }
 void cdmusic_cue(int index) { (void) index; }

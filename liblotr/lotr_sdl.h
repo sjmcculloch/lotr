@@ -125,8 +125,18 @@ extern const char *lotr_display_filter_name(void);
 /* select a display filter */
 extern void lotr_display_filter_set(int filter);
 
-/* select the next display filter and remember it in settings.txt */
-extern void lotr_display_filter_next(void);
+/* step through the display filters and remember the one chosen */
+extern void lotr_display_filter_step(int delta);
+
+/* fullscreen on? */
+extern int lotr_fullscreen(void);
+
+/* switch fullscreen and remember it in settings.txt */
+extern void lotr_set_fullscreen(int on);
+
+/* sound effect and music volume, 0-100 */
+extern void lotr_set_effects_volume(int percent);
+extern void lotr_set_music_volume(int percent);
 
 
 /* sets palette */

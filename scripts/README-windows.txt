@@ -21,7 +21,7 @@ disc image. Put tools\extract-music.ps1 next to your .bin and .cue
 It writes track02.wav ... into cd\music plus a music.txt you can edit:
 the background playlist, the volume, and which tracks to play for the
 game's music cues. Each cue the game fires is noted in lotr.log.
-The Options screen's music setting switches it on and off.
+Options > M switches it on and off; Options > C sets its volume.
 
 If you have a .bin/.cue disc image, tools\extract-data-track.ps1 turns
 its data track into an .iso that Windows and 7-Zip can open.
@@ -32,6 +32,15 @@ setting a LOTR_DATA environment variable to the folder holding arts.dat.
 
 Saved games go in the "saves" folder next to lotr.exe, created
 automatically.
+
+SETTINGS
+--------
+Options (O), then C (Configure) opens the settings: music on/off, music
+volume, effects volume, display filter and fullscreen. Up/Down picks a
+line, Left/Right (or Enter) changes it; changes apply at once. They are
+kept in settings.txt next to lotr.exe, as are F10, F11 and the Options
+menu's M (music) key. The music volume set here overrides the "volume"
+line in cd\music\music.txt. Delete settings.txt to go back to defaults.
 
 DISPLAY
 -------
@@ -84,6 +93,8 @@ Changes in this build:
     saves are written safely (a crash mid-save cannot damage a slot)
   - F10 display filters: sharp, smooth (hq4x by Maxim Stepin and
     Cameron Zemek, LGPL) and CRT, remembered in settings.txt
+  - settings screen (Options > C): music, music and effects volume,
+    display filter, fullscreen; all remembered in settings.txt
   - diagnostics written to lotr.log next to lotr.exe
   - plays the CD soundtrack (ripped from the disc) as background music,
     pausing for films and resuming where it left off
