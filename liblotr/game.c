@@ -41,6 +41,7 @@
 #include "utils.h"
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <libxml/xmlmemory.h>
 #include <libxml/parser.h>
 
@@ -122,6 +123,9 @@ int game_map_saved[8];
 
 /* spot commands are running */
 int game_spot_running = 0;
+
+/* a new map was entered, autosave once the game is idle */
+static int game_autosave_pending = 0;
 
 /* game timer */
 int game_timer = -1;
@@ -222,6 +226,10 @@ game_load_map(int map)
         fprintf(stderr, "lotr: not existing map index=%d\n", map);
         exit(1);
     }
+
+    if (game_map_id >= 0 && map != game_map_id)
+        game_autosave_pending = 1;
+
 #ifdef TTT
     map_exit_building();
 #endif
@@ -365,11 +373,239 @@ game_new(void)
     game_original_leader = NULL;
     game_tmp_leader = NULL;
 
+    game_autosave_pending = 0;
 }
 
 
 
 
+
+
+
+/*
+  file name of save slot n
+*/
+
+static void
+game_save_name(int n, char *name, size_t size)
+{
+#ifndef TTT
+    const char *base = "savegame";
+#else
+    const char *base = "savegame2";
+#endif
+
+    if (n == GAME_SLOT_QUICK)
+        snprintf(name, size, "%s.quick", base);
+    else if (n == GAME_SLOT_AUTO)
+        snprintf(name, size, "%s.auto", base);
+    else
+        snprintf(name, size, "%s.%d", base, n);
+}
+
+
+
+/*
+  name of the region a map belongs to; maps come in pairs (surface and
+  below ground) that share their spots
+*/
+
+const char *
+game_map_name(int map)
+{
+    static char unknown[16];
+#ifndef TTT
+    static const char *names[] = {
+        "Shire", "Old Forest", "Bree", "Rivendell", "Moria", "Lothlorien",
+        "Dol Guldur"
+    };
+
+    if (map >= 0 && map / 2 < (int)(sizeof(names) / sizeof(names[0])))
+        return names[map / 2];
+#endif
+
+    snprintf(unknown, sizeof(unknown), "Map %d", map);
+    return unknown;
+}
+
+
+
+/*
+  is the game in a state that can be saved
+  scripts and combat keep state that a save game does not hold
+*/
+
+int
+game_can_save(void)
+{
+    return leader != NULL && game_map_id >= 0 && !game_spot_running
+        && !combat_get_mode();
+}
+
+
+
+/*
+  parses save slot n and checks everything game_load relies on,
+  so a damaged file is rejected before the running game is touched
+  return NULL if the file is missing or not valid
+*/
+
+static xmlDocPtr
+game_open_save(int n, int *exists)
+{
+    char name[20];
+    char path[1024];
+    FILE *file;
+    xmlDocPtr doc;
+    xmlNodePtr root, node, subnode;
+    int map, i;
+    Uint8 buf[LOTR_PARTY_SIZE];
+    int party_size;
+    const char *why = NULL;
+
+    static const char *party_props[] =
+        { "silver", "moving", "follow", "party", "leader" };
+    static const char *map_props[] =
+        { "frame", "mode", "mode_param", "light_mode" };
+
+    game_save_name(n, name, sizeof(name));
+    snprintf(path, sizeof(path), "%s", lotr_homedir_filename(name));
+
+    *exists = 0;
+    file = fopen(path, "rb");
+    if (file == NULL)
+        return NULL;
+    fclose(file);
+    *exists = 1;
+
+#if LIBXML_VERSION >= 21400
+    /* older Linux builds wrote gzip compressed saves */
+    doc = xmlReadFile(path, NULL, XML_PARSE_UNZIP);
+#else
+    doc = xmlParseFile(path);
+#endif
+    if (doc == NULL) {
+        why = "not readable XML";
+        goto bad;
+    }
+
+    root = xmlDocGetRootElement(doc);
+    if (root == NULL
+        || xmlStrcmp(root->name, (const xmlChar *)"lotr_savegame")) {
+        why = "not a save game";
+        goto bad;
+    }
+
+#ifndef TTT
+    if (lotr_load_prop_int_default(root, "vol", 1) != 1) {
+#else
+    if (lotr_load_prop_int_default(root, "vol", 1) != 2) {
+#endif
+        why = "save game of the other volume";
+        goto bad;
+    }
+
+    node = lotr_get_subnode(root, (const xmlChar *)"characters", 0);
+    if (node == NULL || xmlFirstElementChild(node) == NULL) {
+        why = "no characters";
+        goto bad;
+    }
+
+    node = lotr_get_subnode(root, (const xmlChar *)"map_saves", 0);
+    if (node == NULL) {
+        why = "no map_saves";
+        goto bad;
+    }
+    for (subnode = xmlFirstElementChild(node); subnode != NULL;
+         subnode = xmlNextElementSibling(subnode)) {
+        i = lotr_load_prop_int_default(subnode, "map_num", -1);
+        if (i < 0 || i >= 8
+            || !lotr_get_subnode(subnode, (const xmlChar *)"map_data", 0)) {
+            why = "bad map_saves entry";
+            goto bad;
+        }
+    }
+
+    map = lotr_load_prop_int_default(root, "game_map_id", -1);
+    if (map < 0 || map >= (int)(sizeof(game_maps) / sizeof(game_maps[0]))
+        || !game_maps[map][0]) {
+        why = "bad game_map_id";
+        goto bad;
+    }
+
+    node = lotr_get_subnode(root, (const xmlChar *)"map", 0);
+    for (i = 0; node != NULL
+         && i < (int)(sizeof(map_props) / sizeof(map_props[0])); ++i)
+        if (!lotr_get_subnode(node, (const xmlChar *)map_props[i], 0))
+            node = NULL;
+    if (node == NULL) {
+        why = "missing or incomplete map mode";
+        goto bad;
+    }
+
+    node = lotr_get_subnode(root, (const xmlChar *)"party", 0);
+    for (i = 0; node != NULL
+         && i < (int)(sizeof(party_props) / sizeof(party_props[0])); ++i)
+        if (!lotr_get_subnode(node, (const xmlChar *)party_props[i], 0))
+            node = NULL;
+    if (node == NULL) {
+        why = "missing or incomplete party";
+        goto bad;
+    }
+
+    party_size = lotr_load_prop_field(node, "party", buf, LOTR_PARTY_SIZE);
+    for (i = 0; i < party_size; ++i)
+        if (!character_exists(buf[i])) {
+            why = "unknown party member";
+            goto bad;
+        }
+    if (!character_exists(lotr_load_prop_int(node, "leader"))) {
+        why = "unknown leader";
+        goto bad;
+    }
+
+    return doc;
+
+bad:
+    fprintf(stderr, "lotr: can not use save game %s: %s\n", path, why);
+    if (doc != NULL)
+        xmlFreeDoc(doc);
+    return NULL;
+}
+
+
+
+/*
+  describe save slot n without touching the running game
+*/
+
+int
+game_save_info(int n, int *map, int *leader_id, time_t *mtime)
+{
+    char name[20];
+    struct stat st;
+    xmlDocPtr doc;
+    xmlNodePtr root;
+    int exists;
+
+    doc = game_open_save(n, &exists);
+    if (doc == NULL)
+        return exists ? -1 : 0;
+
+    root = xmlDocGetRootElement(doc);
+    *map = lotr_load_prop_int(root, "game_map_id");
+    *leader_id = lotr_load_prop_int(
+        lotr_get_subnode(root, (const xmlChar *)"party", 1), "leader");
+    xmlFreeDoc(doc);
+
+    game_save_name(n, name, sizeof(name));
+    if (stat(lotr_homedir_filename(name), &st) == 0)
+        *mtime = st.st_mtime;
+    else
+        *mtime = 0;
+
+    return 1;
+}
 
 
 
@@ -382,6 +618,8 @@ game_save(int n)
 {
 
     char name[20];
+    char path[1024];
+    char tmp[1100];
     int i;
 
 
@@ -392,8 +630,10 @@ game_save(int n)
     xmlNodePtr node;
     xmlNodePtr subnode;
 
+    /* plain XML: libxml2 2.14+ no longer reads gzip without being asked,
+       and the Windows build has no zlib at all */
     doc = xmlNewDoc((const xmlChar *)"1.0");
-    xmlSetDocCompressMode(doc, 6);
+    xmlSetDocCompressMode(doc, 0);
 
 
     root = xmlNewNode(NULL, (const xmlChar *)"lotr_savegame");
@@ -469,16 +709,25 @@ game_save(int n)
     lotr_save_prop_int(node, "map", saved_position_map);
 
 
-#ifndef TTT
-    snprintf(name, sizeof(name), "savegame.%d", n);
-#else
-    snprintf(name, sizeof(name), "savegame2.%d", n);
-#endif
+    /* write a temporary file first so a failed write never damages
+       the slot; the player's own slots also keep a .bak of the old save */
+    game_save_name(n, name, sizeof(name));
+    snprintf(path, sizeof(path), "%s", lotr_homedir_filename(name));
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
 
-    xmlSaveFormatFileEnc(lotr_homedir_filename(name), doc, "ascii", 1);
+    if (xmlSaveFormatFileEnc(tmp, doc, "ascii", 1) < 0) {
+        fprintf(stderr, "lotr: can not write %s\n", tmp);
+        remove(tmp);
+        xmlFreeDoc(doc);
+        return 0;
+    }
 
     xmlFreeDoc(doc);
 
+    if (!lotr_replace_file(tmp, path, n >= 1 && n <= GAME_SLOT_MAX))
+        return 0;
+
+    fprintf(stderr, "lotr: saved %s\n", path);
     return 1;
 }
 
@@ -491,39 +740,21 @@ int
 game_load(int n)
 {
 
-    char name[20];
     int i;
-    int vol;
+    int exists;
 
-    Uint8 buf[10];
+    Uint8 buf[LOTR_PARTY_SIZE];
 
     xmlDocPtr doc;
     xmlNodePtr root;
     xmlNodePtr node;
     xmlNodePtr subnode;
 
-#ifndef TTT
-    snprintf(name, sizeof(name), "savegame.%d", n);
-#else
-    snprintf(name, sizeof(name), "savegame2.%d", n);
-#endif
-
-    doc = xmlParseFile(lotr_homedir_filename(name));
+    doc = game_open_save(n, &exists);
     if (doc == NULL)
         return 0;
 
     root = xmlDocGetRootElement(doc);
-    if (root == NULL)
-        return 0;
-
-    vol = lotr_load_prop_int_default(root, "vol", 1);
-#ifndef TTT
-    if (vol != 1)
-        return 0;
-#else
-    if (vol != 2)
-        return 0;
-#endif
 
     node = lotr_get_subnode(root, (const xmlChar *)"characters", 1);
     characters_load(node);
@@ -598,6 +829,7 @@ game_load(int n)
 
     xmlFreeDoc(doc);
 
+    game_autosave_pending = 0;
 
     return 1;
 }
@@ -912,6 +1144,12 @@ game_next_frame(void)
     if (!game_spot_running) {
         if (leader == NULL)
             goto end_next_frame;
+
+        /* autosave once the scripts that brought us to a new map are done */
+        if (game_autosave_pending && game_can_save()) {
+            game_autosave_pending = 0;
+            game_save(GAME_SLOT_AUTO);
+        }
 
         if (game_timer > 0) {
             game_timer--;

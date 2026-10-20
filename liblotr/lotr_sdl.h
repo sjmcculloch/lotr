@@ -48,6 +48,9 @@
 #define KEY_PAGEUP      SDLK_PAGEUP
 #define KEY_PAGEDOWN    SDLK_PAGEDOWN
 
+#define KEY_QUICKSAVE   SDLK_F5
+#define KEY_QUICKLOAD   SDLK_F9
+
 
 /* initialize SDL */
 extern void lotr_system_init(void);

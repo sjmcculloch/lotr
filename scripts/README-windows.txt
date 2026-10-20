@@ -33,6 +33,18 @@ setting a LOTR_DATA environment variable to the folder holding arts.dat.
 Saved games go in the "saves" folder next to lotr.exe, created
 automatically.
 
+SAVING
+------
+  F5   quicksave            F9   quickload (no confirmation)
+  The game also autosaves each time you enter a new map.
+  Options (O), then S save or L load, lists every slot with its party
+  leader, region and date: slots 1-9 for your own saves; when loading,
+  Q is the quicksave and A the autosave. Quick and auto saves have their
+  own files (savegame.quick, savegame.auto) and never touch slots 1-9.
+  Saving over slot N first keeps the old one as savegame.N.bak; rename it
+  back to savegame.N to undo. You cannot save during combat or while a
+  scene is playing out; the game tells you so.
+
 CONTROLS
 --------
   Arrow keys      move
@@ -42,6 +54,7 @@ CONTROLS
   T  talk         U  use           V  view
   O  options      H  help          Q  quit
   Esc             cancel / options
+  F5 / F9         quicksave / quickload
   Alt+Enter, F11  toggle fullscreen
   Any key         skip a cutscene (ReelMagic movies)
 
@@ -57,6 +70,9 @@ Changes in this build:
   - sharp, whole-number pixel scaling; window sized to your screen
   - fullscreen toggle
   - missing-data error shown as a dialog
+  - F5/F9 quicksave and quickload, autosave on entering a new map, and a
+    save/load screen showing leader, region and date for slots 1-9;
+    saves are written safely (a crash mid-save cannot damage a slot)
   - diagnostics written to lotr.log next to lotr.exe
   - plays the CD soundtrack (ripped from the disc) as background music,
     pausing for films and resuming where it left off

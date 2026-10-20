@@ -1184,10 +1184,96 @@ dialog_options_show(void)
  */
 
 
+#if !PIXEL_PRECISE
+
+/* the save/load list uses a full width scroll */
+#define SAVELOAD_SCROLL_WIDTH 36
+#define SAVELOAD_LINE_SIZE    (SAVELOAD_SCROLL_WIDTH + 1)
+
+
+/*
+  one line of the save/load list: key, leader, region and date of the slot
+*/
+
+static void
+dialog_saveload_line(char *line, char key, int slot)
+{
+    int map, leader_id;
+    time_t mtime;
+    char date[16];
+    char leader_name[11];
+    struct tm *tm;
+
+    switch (game_save_info(slot, &map, &leader_id, &mtime)) {
+        case 0:
+            snprintf(line, SAVELOAD_LINE_SIZE, "%c -- empty --", key);
+            break;
+
+        case -1:
+            snprintf(line, SAVELOAD_LINE_SIZE, "%c (damaged save)", key);
+            break;
+
+        default:
+            tm = localtime(&mtime);
+            if (mtime == 0 || tm == NULL
+                || !strftime(date, sizeof(date), "%d %b %H:%M", tm))
+                date[0] = 0;
+            /* first name only: "Frodo Baggins" would not fit */
+            snprintf(leader_name, sizeof(leader_name), "%.10s",
+                     character_get(leader_id)->name);
+            leader_name[strcspn(leader_name, " ")] = 0;
+            snprintf(line, SAVELOAD_LINE_SIZE, "%c %-10s %-10.10s %.12s",
+                     key, leader_name, game_map_name(map), date);
+            break;
+    }
+}
+
+
+/*
+  draws the save/load list; loading also offers the quick and auto saves
+*/
+
+static void
+dialog_saveload_draw(int load)
+{
+    char lines[GAME_SLOT_MAX + 4][SAVELOAD_LINE_SIZE];
+    const char *text[GAME_SLOT_MAX + 4];
+    int n = 0;
+    int i;
+
+    snprintf(lines[n++], SAVELOAD_LINE_SIZE, "%s",
+             load ? "Load Game" : "Save Game");
+
+    if (load) {
+        dialog_saveload_line(lines[n++], 'Q', GAME_SLOT_QUICK);
+        dialog_saveload_line(lines[n++], 'A', GAME_SLOT_AUTO);
+    }
+
+    for (i = 1; i <= GAME_SLOT_MAX; ++i)
+        dialog_saveload_line(lines[n++], '0' + i, i);
+
+    snprintf(lines[n++], SAVELOAD_LINE_SIZE, "%s",
+             load ? "Q. Quicksave  A. Autosave  X. Exit" : "X. Exit");
+
+    for (i = 0; i < n; ++i)
+        text[i] = lines[i];
+
+    draw_scroll(0, 0, -SAVELOAD_SCROLL_WIDTH, n, text);
+}
+
+#endif
+
+
+
 void
 dialog_save_show(void)
 {
+#if !PIXEL_PRECISE
+    dialog_mode = DIALOG_SAVE;
+    dialog_confirm = 0;
 
+    dialog_saveload_draw(0);
+#else
     const char *text[7] = {
         "Save Game",
         "1. Game One",
@@ -1209,7 +1295,7 @@ dialog_save_show(void)
     dialog_confirm = 0;
 
     draw_scroll(0, 0, -DEFAULT_SCROLL_WIDTH, 7, text);
-
+#endif
 }
 
 
@@ -1222,7 +1308,12 @@ dialog_save_show(void)
 void
 dialog_load_show(void)
 {
+#if !PIXEL_PRECISE
+    dialog_mode = DIALOG_LOAD;
+    dialog_confirm = 0;
 
+    dialog_saveload_draw(1);
+#else
     const char *text[7] = {
         "Load Game",
         "1. Game One",
@@ -1244,7 +1335,7 @@ dialog_load_show(void)
     dialog_confirm = 0;
 
     draw_scroll(0, 0, -DEFAULT_SCROLL_WIDTH, 7, text);
-
+#endif
 }
 
 
@@ -1339,20 +1430,36 @@ dialog_saveload_key(int key)
         { "Save current game,", "done.", "", "", "", "", "" };
     const char *loaded_text[7] =
         { "Load previous game,", "done.", "", "", "", "", "" };
+    const char *failed_text[7] =
+        { "Save current game,", "failed!", "", "", "", "", "" };
 
     if (key == 'x')
         quit_menu();
 
-    if (key >= '1' && key <= '9') {
+    n = 0;
+    if (key >= '1' && key <= '9')
         n = key - '0';
+    if (dialog_mode == DIALOG_LOAD && key == 'q')
+        n = GAME_SLOT_QUICK;
+    if (dialog_mode == DIALOG_LOAD && key == 'a')
+        n = GAME_SLOT_AUTO;
+
+    if (n) {
 
 #if PIXEL_PRECISE
         if (n > 2)
             return;
 #endif
         if (dialog_mode == DIALOG_SAVE) {
+#if !PIXEL_PRECISE
+            /* clear the wide save list from under the message */
+            gui_clear();
+            game_draw_map();
+#endif
             if (game_save(n))
                 dialog_options_message_show(saved_text);
+            else
+                dialog_options_message_show(failed_text);
             return;
         }
         if (dialog_mode == DIALOG_LOAD) {
@@ -3063,6 +3170,60 @@ main_menu_key(int key)
   gui frame - returns nonzero if a dialog is active (game paused)
 */
 
+#ifndef DEMO
+/*
+  F5: save to the quicksave slot
+*/
+
+static void
+gui_quicksave(void)
+{
+    if (!game_can_save())
+        gui_message("You cannot save the game right now.", 1);
+    else if (game_save(GAME_SLOT_QUICK))
+        gui_message("Quicksave done.", 1);
+    else
+        gui_message("Quicksave failed!", 1);
+}
+
+
+
+/*
+  F9: load the quicksave slot
+*/
+
+static void
+gui_quickload(void)
+{
+    int map, leader_id;
+    time_t mtime;
+
+    if (combat_get_mode()) {
+        gui_message("You cannot load a game during combat.", 1);
+        return;
+    }
+
+    switch (game_save_info(GAME_SLOT_QUICK, &map, &leader_id, &mtime)) {
+        case 0:
+            gui_message("There is no quicksave yet. Press F5 to make one.",
+                        1);
+            return;
+        case -1:
+            gui_message("The quicksave is damaged and cannot be loaded.", 1);
+            return;
+        default:
+            break;
+    }
+
+    if (game_load(GAME_SLOT_QUICK))
+        gui_message("Quickload done.", 1);
+    else
+        gui_message("Quickload failed!", 1);
+}
+#endif
+
+
+
 int
 gui_frame(void)
 {
@@ -3155,6 +3316,16 @@ gui_frame(void)
             case 'v':
                 dialog_view_show();
                 break;
+
+#ifndef DEMO
+            case KEY_QUICKSAVE:
+                gui_quicksave();
+                break;
+
+            case KEY_QUICKLOAD:
+                gui_quickload();
+                break;
+#endif
 
 #ifdef WIZARD_MODE
             case 'w':

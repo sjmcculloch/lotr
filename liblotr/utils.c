@@ -39,6 +39,7 @@
 #include <SDL.h>
 #ifdef WIN32
 #include <direct.h>
+#include <windows.h>
 #endif
 
 #ifdef WIN32
@@ -378,6 +379,86 @@ lotr_get_subnode(xmlNodePtr node, const xmlChar *name, int force)
     return cur;
 
 }
+
+
+/*
+  copies file src to dst, return 1 on success
+*/
+
+static int
+lotr_copy_file(const char *src, const char *dst)
+{
+    FILE *in, *out;
+    char buf[8192];
+    size_t n;
+    int ok = 1;
+
+    in = fopen(src, "rb");
+    if (in == NULL)
+        return 0;
+    out = fopen(dst, "wb");
+    if (out == NULL) {
+        fclose(in);
+        return 0;
+    }
+
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0)
+        if (fwrite(buf, 1, n, out) != n) {
+            ok = 0;
+            break;
+        }
+
+    if (ferror(in))
+        ok = 0;
+    fclose(in);
+    if (fclose(out) != 0)
+        ok = 0;
+
+    return ok;
+}
+
+
+/*
+  replaces file path with the freshly written file tmp in one step;
+  with backup the old path is first copied to <path>.bak
+  return 1 on success, on failure path is left untouched
+*/
+
+int
+lotr_replace_file(const char *tmp, const char *path, int backup)
+{
+    char bak[1100];
+    FILE *old;
+
+    if (backup && (old = fopen(path, "rb")) != NULL) {
+        fclose(old);
+        snprintf(bak, sizeof(bak), "%s.bak", path);
+        if (!lotr_copy_file(path, bak)) {
+            fprintf(stderr, "lotr: can not back up %s to %s\n", path, bak);
+            remove(tmp);
+            return 0;
+        }
+    }
+
+#ifdef WIN32
+    if (!MoveFileExA(tmp, path,
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        fprintf(stderr, "lotr: can not replace %s (error %lu)\n", path,
+                (unsigned long)GetLastError());
+        remove(tmp);
+        return 0;
+    }
+#else
+    if (rename(tmp, path) != 0) {
+        perror("lotr: can not replace save file");
+        remove(tmp);
+        return 0;
+    }
+#endif
+
+    return 1;
+}
+
 
 
 /*
