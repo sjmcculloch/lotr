@@ -32,6 +32,8 @@ liblotr_la_SOURCES = \
 	hqx_common.h \
 	init.c \
 	init.h \
+	journal.c \
+	journal.h \
 	lotr_sdl2.c \
 	lotr_sdl.h \
 	map.c \

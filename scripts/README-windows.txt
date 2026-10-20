@@ -33,6 +33,15 @@ setting a LOTR_DATA environment variable to the folder holding arts.dat.
 Saved games go in the "saves" folder next to lotr.exe, created
 automatically.
 
+JOURNAL
+-------
+J opens your journal: the story paragraphs you have read, what people
+told you (with the topic you asked about), and the important messages,
+grouped by region, newest at the bottom. Arrows, PgUp/PgDn and Home/End
+scroll; J or X closes it. Repeats and routine messages ("The door is
+locked.") are left out. The journal is part of each saved game; games
+saved before this version start with an empty one.
+
 SETTINGS
 --------
 Options (O), then C (Configure) opens the settings: music on/off, music
@@ -70,6 +79,7 @@ CONTROLS
   L  leader       M  magic         S  skill
   T  talk         U  use           V  view
   O  options      H  help          Q  quit
+  J  journal
   Esc             cancel / options
   F5 / F9         quicksave / quickload
   F10             display: sharp pixels / smooth (hqx) / CRT scanlines
@@ -95,6 +105,8 @@ Changes in this build:
     Cameron Zemek, LGPL) and CRT, remembered in settings.txt
   - settings screen (Options > C): music, music and effects volume,
     display filter, fullscreen; all remembered in settings.txt
+  - journal (J) of paragraphs, conversations and story messages, kept
+    in each saved game
   - diagnostics written to lotr.log next to lotr.exe
   - plays the CD soundtrack (ripped from the disc) as background music,
     pausing for films and resuming where it left off

@@ -74,6 +74,17 @@ at a data folder.
   handled in `lotr_poll_events()`. hq4x is vendored (`hq4x.c`, `hqx.h`,
   `hqx_common.h`, from grom358/hqx) with three `LOTR patch` changes; the
   harness checked it byte-identical to the original library.
+- **Journal:** `journal.c` records paragraphs (by number, text read from
+  para.dat when shown; `gui_paragraph_plain()` copes with
+  `gui_paragraph_scroll()` zeroing line ends), conversations (speaker,
+  matched keyword, text; not the 0x100 "don't know" or an NPC's default
+  reply) and script `TEXT` messages minus `journal_is_noise()`; repeats
+  are skipped. Hooks: `spot.c` TEXT/TEXT_PAR/QUESTION_PAR,
+  `dialog_talk_show()`, `dialog_question_key()`. Saved as `<journal>` in
+  the save game (`<message>`, never `<text>`: libxml names whitespace
+  nodes "text"). Viewer: `dialog_journal_*` in gui.c, key J.
+  NPC talk tables are filled by map scripts as you play, so a harness
+  needs a loaded save or must set `character->texts` itself.
 - **Settings:** `lotr_setting_get/set()` in `utils.c` read and rewrite
   `settings.txt` ("key = value", other lines kept): next to the exe on
   Windows, `~/.lotr` elsewhere. Keys: `display`, `fullscreen` (F11 too),
