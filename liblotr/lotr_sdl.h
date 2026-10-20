@@ -48,6 +48,9 @@
 #define KEY_PAGEUP      SDLK_PAGEUP
 #define KEY_PAGEDOWN    SDLK_PAGEDOWN
 
+#define KEY_QUICKSAVE   SDLK_F5
+#define KEY_QUICKLOAD   SDLK_F9
+
 
 /* initialize SDL */
 extern void lotr_system_init(void);
@@ -97,6 +100,11 @@ extern int lotr_key_ctrl();
 
 
 
+
+#if SDL_MAJOR_VERSION >= 2
+/* renderer, for drawing movies straight to the window */
+extern SDL_Renderer *lotr_sdl_renderer(void);
+#endif
 
 /* shows a new screen */
 extern void lotr_show_screen(Uint8 *newscreen);

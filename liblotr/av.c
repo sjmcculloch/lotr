@@ -31,6 +31,7 @@
 #include "av.h"
 #include "graphics.h"
 #include "lotr_sdl.h"
+#include "mpg.h"
 #include "timing.h"
 #include "utils.h"
 #include <stdio.h>
@@ -123,6 +124,17 @@ av_play(char *name)
     int pos;
 
     fullname = lotr_add_suffix(name, "av");
+
+    /* The ReelMagic CD edition has MPEG-1 movies instead of .av files.
+       Prefer .av, then .mpg; if neither exists, skip the cutscene
+       instead of quitting the game. */
+    if (!lotr_file_exists(fullname)) {
+        free(fullname);
+        if (!mpg_play(name))
+            fprintf(stderr, "lotr: cutscene %s not found, skipping\n", name);
+        return;
+    }
+
     avfile = lotr_fopen(fullname, "rb");
     free(fullname);
 

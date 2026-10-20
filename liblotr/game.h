@@ -31,15 +31,31 @@
 
 #include "character.h"
 #include "spot.h"
+#include <time.h>
 
 /* starts a new game */
 extern void game_new(void);
+
+/* save slots: 1-9 are the player's, quick and auto saves have their own */
+#define GAME_SLOT_MAX   9
+#define GAME_SLOT_QUICK 10
+#define GAME_SLOT_AUTO  11
 
 /* save game */
 extern int game_save(int n);
 
 /* load game */
 extern int game_load(int n);
+
+/* describe save slot n without touching the running game;
+   return 1 if valid, 0 if the slot is empty, -1 if it can not be read */
+extern int game_save_info(int n, int *map, int *leader_id, time_t *mtime);
+
+/* is the game in a state that can be saved (no script, combat) */
+extern int game_can_save(void);
+
+/* name of the region map belongs to */
+extern const char *game_map_name(int map);
 
 /* activate party */
 extern void game_party_activate(int id);
@@ -91,10 +107,10 @@ extern int game_in_party(Character *character);
 extern int game_get_party(int codes[10]);
 
 /* get the game party characters */
-extern int game_get_party_characters(Character *party[11]);
+extern int game_get_party_characters(Character *party[LOTR_PARTY_SIZE]);
 
 /* set game party characters */
-extern void game_set_party_characters(Character *party[11], int size);
+extern void game_set_party_characters(Character *party[LOTR_PARTY_SIZE], int size);
 
 
 /* loads a map */

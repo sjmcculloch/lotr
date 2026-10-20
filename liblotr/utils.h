@@ -52,6 +52,9 @@ extern int lotr_file_exists(const char *path);
 /* return full path to $HOME/.lotr/<name> */
 extern char *lotr_homedir_filename(const char *name);
 
+/* atomically replaces path with tmp, optionally keeping <path>.bak */
+extern int lotr_replace_file(const char *tmp, const char *path, int backup);
+
 /* adds suffix to a filename */
 extern char *lotr_add_suffix(const char *name, const char *suffix);
 

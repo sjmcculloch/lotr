@@ -28,13 +28,14 @@
 #include "lotr.h"
 #include "pythonhelper.h"
 #include "spot.h"
+#include "utils.h"
 #include <stdio.h>
 
 
 char *
 ph_data_directory(void)
 {
-    return DATA_DIRECTORY;
+    return lotr_data_directory();
 }
 
 

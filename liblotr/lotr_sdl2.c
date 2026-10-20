@@ -29,6 +29,7 @@
 #include "lotr.h"
 #include "lotr_sdl.h"
 #include "midi.h"
+#include "cdmusic.h"
 #ifdef HAVE_LIBHQX
 #include "hqx.h"
 #endif
@@ -123,12 +124,32 @@ lotr_system_init(void)
 #ifdef FULLSCREEN
     win_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 #endif
-    win_flags |= SDL_WINDOW_RESIZABLE;
+    win_flags |= SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+
+    /* Sharp pixels rather than bilinear blur when the image is scaled up */
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
+
+    /* Open the window at the largest whole multiple of 320x200 that fits
+       in roughly 85% of the desktop, instead of a postage stamp */
+    int win_w = SCREEN_WIDTH * win_fact;
+    int win_h = SCREEN_HEIGHT * win_fact;
+    {
+        SDL_DisplayMode dm;
+        if (SDL_GetDesktopDisplayMode(0, &dm) == 0) {
+            int sx = (dm.w * 85 / 100) / SCREEN_WIDTH;
+            int sy = (dm.h * 85 / 100) / SCREEN_HEIGHT;
+            int s = sx < sy ? sx : sy;
+            if (s > 1) {
+                win_w = SCREEN_WIDTH * s;
+                win_h = SCREEN_HEIGHT * s;
+            }
+        }
+    }
 
     main_window =
         SDL_CreateWindow("Lord of the Rings",
-                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                SCREEN_WIDTH * win_fact, SCREEN_HEIGHT * win_fact,
+                SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                win_w, win_h,
                 win_flags);
 
     if (main_window == NULL) {
@@ -143,6 +164,10 @@ lotr_system_init(void)
     }
     SDL_RenderSetLogicalSize(main_window_renderer,
             SCREEN_WIDTH * win_fact, SCREEN_HEIGHT * win_fact);
+#if SCREEN_FACT == 1
+    /* whole-number scaling keeps every pixel the same size */
+    SDL_RenderSetIntegerScale(main_window_renderer, SDL_TRUE);
+#endif
 
     memset(active_palette, '\0', sizeof(active_palette));
 
@@ -277,9 +302,25 @@ lotr_poll_events(void)
 {
     SDL_Event event;
 
+    cdmusic_update();           /* next CD music track when one ends */
+
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
             case SDL_KEYDOWN:
+
+                /* Alt+Enter or F11 toggles fullscreen; never reaches the game */
+                if (event.key.keysym.sym == SDLK_F11 ||
+                    (event.key.keysym.sym == SDLK_RETURN &&
+                     (event.key.keysym.mod & KMOD_ALT))) {
+                    if (!event.key.repeat && main_window != NULL) {
+                        Uint32 fs = SDL_GetWindowFlags(main_window) &
+                            SDL_WINDOW_FULLSCREEN_DESKTOP;
+                        SDL_SetWindowFullscreen(main_window,
+                                fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                        SDL_ShowCursor(fs ? SDL_ENABLE : SDL_DISABLE);
+                    }
+                    break;
+                }
 
                 if (lotr_input_disabled)
                     break;
@@ -450,9 +491,18 @@ lotr_input_enable(void)
 /*
   shows a new screen
 */
+SDL_Renderer *
+lotr_sdl_renderer(void)
+{
+    return main_window_renderer;
+}
+
+
 void
 lotr_show_screen(Uint8 *newscreen)
 {
+    if (main_window_renderer == NULL)
+        return;
     SDL_Surface *src;
 #if SCREEN_FACT == 1
     /* convert pixels to 8-bit SDL surface */

@@ -41,13 +41,15 @@
 #  define AMIGA_OS4
 #endif
 
+#define LOTR_PARTY_SIZE 11
+
 /* define this to compile The Two Towers - not working */
 /* #define TTT */
 
 #ifndef TTT
 /* define this to compile the CD version */
 /* works only with Fellowship of the Ring */
-/* #define CD_VERSION */
+#define CD_VERSION
 
 /* define this if you want to compile a demo binary */
 /* works only with Fellowship of the Ring */
@@ -75,6 +77,22 @@
 
 #if !defined(PREFIX)
 #  define PREFIX
+#endif
+
+/* MinGW in strict modes defines only _WIN32 */
+#if defined(_WIN32) && !defined(WIN32)
+#  define WIN32
+#endif
+
+/* Data folder looked for next to the executable (see lotr_data_directory) */
+#if defined(DEMO)
+#  define DATA_SUBDIR "demo"
+#elif defined(TTT)
+#  define DATA_SUBDIR "towers"
+#elif defined(CD_VERSION)
+#  define DATA_SUBDIR "cd"
+#else
+#  define DATA_SUBDIR "lotr"
 #endif
 
 #ifdef DEMO

@@ -71,3 +71,21 @@ MSVC8/lotr.suo
 tools/dendx
 tools/ndxdec
 tools/ndxenc
+tags
+/build-win/
+
+# build outputs
+/configure~
+/src/lotr
+/src/lotr.exe
+/tools/getbuildings_ttt
+/tools/getcharacters
+/tools/getcharacters_ttt
+/tools/getobjects
+/tools/getobjects_ttt
+/tools/getprices
+/tools/getsounds_ttt
+/tools/maps2bmp
+/tools/ripmaps
+*.exe
+/config.h.in~
