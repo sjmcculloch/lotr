@@ -49,7 +49,7 @@
 #ifndef TTT
 /* define this to compile the CD version */
 /* works only with Fellowship of the Ring */
-/* #define CD_VERSION */
+#define CD_VERSION
 
 /* define this if you want to compile a demo binary */
 /* works only with Fellowship of the Ring */
