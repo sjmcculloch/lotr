@@ -88,3 +88,4 @@ tags
 /tools/maps2bmp
 /tools/ripmaps
 *.exe
+/config.h.in~
