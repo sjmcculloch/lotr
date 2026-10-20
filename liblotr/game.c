@@ -375,6 +375,7 @@ game_new(void)
     game_tmp_leader = NULL;
 
     journal_clear();
+    map_explored_clear();
 
     game_autosave_pending = 0;
 }
@@ -707,6 +708,23 @@ game_save(int n)
     xmlAddChild(root, node);
     journal_save(node);
 
+    /* explored parts of each map that has any */
+    node = xmlNewNode(NULL, (const xmlChar *)"explored");
+    xmlAddChild(root, node);
+    for (i = 0; i < MAP_EXPLORED_MAPS; ++i) {
+        Uint8 *bits = map_explored_data(i);
+        int k;
+
+        for (k = 0; k < MAP_EXPLORED_SIZE && !bits[k]; ++k)
+            ;
+        if (k == MAP_EXPLORED_SIZE)
+            continue;
+        subnode = xmlNewNode(NULL, (const xmlChar *)"map");
+        lotr_save_prop_int(subnode, "map_num", i);
+        lotr_save_prop_field(subnode, "bits", bits, MAP_EXPLORED_SIZE);
+        xmlAddChild(node, subnode);
+    }
+
     node = xmlNewNode(NULL, (const xmlChar *)"saved_position");
     xmlAddChild(root, node);
 
@@ -835,6 +853,17 @@ game_load(int n)
 
 
     journal_load(lotr_get_subnode(root, (const xmlChar *)"journal", 0));
+
+    /* explored parts; older saves have none */
+    map_explored_clear();
+    node = lotr_get_subnode(root, (const xmlChar *)"explored", 0);
+    for (subnode = node ? xmlFirstElementChild(node) : NULL; subnode;
+         subnode = xmlNextElementSibling(subnode)) {
+        Uint8 *bits = map_explored_data(
+            lotr_load_prop_int_default(subnode, "map_num", -1));
+        if (bits && lotr_get_subnode(subnode, (const xmlChar *)"bits", 0))
+            lotr_load_prop_field(subnode, "bits", bits, MAP_EXPLORED_SIZE);
+    }
 
     xmlFreeDoc(doc);
 

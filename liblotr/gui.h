@@ -45,6 +45,7 @@
 #define DIALOG_DIED          9
 #define DIALOG_SETTINGS     10
 #define DIALOG_JOURNAL      11
+#define DIALOG_MAP          12
 
 
 #define MAIN_MENU              100

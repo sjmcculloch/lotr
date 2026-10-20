@@ -39,6 +39,10 @@
 #define MAP_WIDTH 64
 #define MAP_HEIGHT 64
 
+/* explored large tiles: one bit each, for every map */
+#define MAP_EXPLORED_MAPS 16
+#define MAP_EXPLORED_SIZE (MAP_WIDTH * MAP_HEIGHT / 8)
+
 /* building dimens */
 #define BUILDING_WIDTH 32
 #define BUILDING_HEIGHT 128
@@ -260,5 +264,14 @@ extern CommandSpot *map_get_pythonspot(int id);
 #endif
 
 
+
+/* explored parts of the maps (kept in save games) */
+extern void map_explored_clear(void);
+extern Uint8 *map_explored_data(int map);      /* MAP_EXPLORED_SIZE bytes */
+extern int map_is_explored(int map, int x, int y);   /* large tiles */
+
+/* the whole current map shrunk to w x h map colours, unexplored parts in
+   colour unexplored */
+extern void map_render_overview(Uint8 *out, int w, int h, int unexplored);
 
 #endif /* _MAP_H */

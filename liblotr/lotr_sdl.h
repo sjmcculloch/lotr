@@ -49,6 +49,7 @@
 #define KEY_PAGEDOWN    SDLK_PAGEDOWN
 #define KEY_HOME        SDLK_HOME
 #define KEY_END         SDLK_END
+#define KEY_TAB         SDLK_TAB
 
 #define KEY_QUICKSAVE   SDLK_F5
 #define KEY_QUICKLOAD   SDLK_F9

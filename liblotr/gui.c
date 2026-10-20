@@ -1508,6 +1508,143 @@ dialog_settings_key(int key)
 
 
 /*
+  map overview (Tab): the whole current map shrunk into the window, parts
+  not yet explored left dark, a blinking cross where the party is
+*/
+
+#define OVERVIEW_SIZE 176       /* pixels; the map is square */
+#define OVERVIEW_X    14
+#define OVERVIEW_Y    12
+
+static Pixmap *overview_map = NULL;     /* clean overview */
+static Pixmap *overview_shown = NULL;   /* with the marker */
+static int overview_frame = 0;
+static int overview_marker_x, overview_marker_y;
+static int overview_marker_color, overview_marker_edge;
+
+
+/* palette entry in [first, last] closest to r, g, b (0-63) */
+static int
+gui_nearest_color(int r, int g, int b, int first, int last)
+{
+    extern Uint8 main_palette[0x300];
+    int c, d, best = first, bestd = 1 << 30;
+    const Uint8 *p;
+
+    for (c = first; c <= last; ++c) {
+        p = main_palette + 3 * c;
+        d = (p[0] - r) * (p[0] - r) + (p[1] - g) * (p[1] - g)
+            + (p[2] - b) * (p[2] - b);
+        if (d < bestd) {
+            bestd = d;
+            best = c;
+        }
+    }
+    return best;
+}
+
+
+static void
+dialog_map_draw_marker(int visible)
+{
+    int i, x, y;
+    Uint8 *d = overview_shown->data;
+
+    memcpy(d, overview_map->data, OVERVIEW_SIZE * OVERVIEW_SIZE);
+    if (visible)
+        for (i = -3; i <= 3; ++i) {
+            /* a cross with a dark edge, readable on any ground */
+            int pass, w;
+            for (pass = 0; pass < 2; ++pass)
+                for (w = -1; w <= 1; ++w) {
+                    if (pass == 1 && w != 0)
+                        continue;
+                    x = overview_marker_x + i;
+                    y = overview_marker_y + w;
+                    if (x >= 0 && y >= 0 && x < OVERVIEW_SIZE
+                        && y < OVERVIEW_SIZE)
+                        d[y * OVERVIEW_SIZE + x] = pass
+                            ? overview_marker_color : overview_marker_edge;
+                    x = overview_marker_x + w;
+                    y = overview_marker_y + i;
+                    if (x >= 0 && y >= 0 && x < OVERVIEW_SIZE
+                        && y < OVERVIEW_SIZE)
+                        d[y * OVERVIEW_SIZE + x] = pass
+                            ? overview_marker_color : overview_marker_edge;
+                }
+        }
+    pixmap_draw(overview_shown, OVERVIEW_X, OVERVIEW_Y);
+}
+
+
+void
+dialog_map_show(void)
+{
+    const char *text[9];
+    char region[13];
+    Character *leader = game_get_leader();
+
+    dialog_mode = DIALOG_MAP;
+    dialog_confirm = 0;
+
+    if (overview_map == NULL) {
+        overview_map = pixmap_new(OVERVIEW_SIZE, OVERVIEW_SIZE);
+        overview_shown = pixmap_new(OVERVIEW_SIZE, OVERVIEW_SIZE);
+    }
+    map_render_overview(overview_map->data, OVERVIEW_SIZE, OVERVIEW_SIZE,
+                        gui_nearest_color(0, 0, 0, 0x40, 0xff));
+
+    /* the marker uses interface colours, which night does not darken */
+    overview_marker_color = gui_nearest_color(63, 8, 8, 0x40, 0xff);
+    overview_marker_edge = gui_nearest_color(63, 63, 63, 0x40, 0xff);
+    if (leader) {
+        /* character coordinates are half map pixels; tiles are 32 */
+        overview_marker_x = leader->x * 2 / 32 * OVERVIEW_SIZE
+            / (MAP_WIDTH * 4);
+        overview_marker_y = leader->y * 2 / 32 * OVERVIEW_SIZE
+            / (MAP_HEIGHT * 4);
+    } else {
+        overview_marker_x = overview_marker_y = -100;
+    }
+
+    snprintf(region, sizeof(region), "%s", game_map_name(map_get_id()));
+    text[0] = region;
+    text[1] = "";
+    text[2] = "The cross";
+    text[3] = "marks you.";
+    text[4] = "";
+    text[5] = "Dark parts:";
+    text[6] = "unexplored.";
+    text[7] = "";
+    text[8] = "Tab. Close";
+
+    gui_clear();
+    draw_scroll(196, OVERVIEW_Y, 12, 9, text);
+    overview_frame = 0;
+    dialog_map_draw_marker(1);
+}
+
+
+/* blink the marker */
+static void
+dialog_map_frame(void)
+{
+    overview_frame = (overview_frame + 1) % 8;
+    if (overview_frame == 0 || overview_frame == 5)
+        dialog_map_draw_marker(overview_frame == 0);
+}
+
+
+void
+dialog_map_key(int key)
+{
+    if (key == KEY_TAB || key == 'x')
+        quit_menu();
+}
+
+
+
+/*
   journal (J): every entry laid out as lines of a full screen scroll,
   newest at the bottom; Up/Down, PgUp/PgDn, Home/End scroll
 */
@@ -3683,6 +3820,9 @@ gui_frame(void)
     }
 
 
+    if (dialog_mode == DIALOG_MAP)
+        dialog_map_frame();
+
     key = lotr_get_key();
 
     if (key == 0 && !lotr_key_esc())
@@ -3761,6 +3901,10 @@ gui_frame(void)
                 dialog_journal_show();
                 break;
 
+            case KEY_TAB:
+                dialog_map_show();
+                break;
+
 #ifndef DEMO
             case KEY_QUICKSAVE:
                 gui_quicksave();
@@ -3815,6 +3959,10 @@ gui_frame(void)
 
             case DIALOG_JOURNAL:
                 dialog_journal_key(key);
+                break;
+
+            case DIALOG_MAP:
+                dialog_map_key(key);
                 break;
 
             case DIALOG_MESSAGE:
